@@ -75,7 +75,7 @@ class SectionParams:
     c= 0                                                  #Coeficiente de Amortiguamiento (Kg/s)
     m: float = 1.5*(1e-3)                                 #Masa de la esfera (Kg)
     k: float =  300                                       #Constante Elástica del Resorte (kg/s^2)
-    m_mag: float= 0.32                                    #Escalar del momento magnético (Teslas)
+    m_mag: float= 0.0387                                    #Escalar del momento magnético (Teslas)
     # -------------------------------------------------------------------
     # -------------------------------------------------------------------
 
@@ -96,7 +96,7 @@ class SectionParams:
     #Sección Mecánica:
 
     g: float =  9.77                           #Constante gravitacional
-    eta: float = 1.1                           #Viscocidad del fluido (kg/m*s)
+    eta: float = 1.5                           #Viscocidad dinámica del fluido (kg/m*s)
     R_sub_e: float = 9.5*(1e-3)                #Radio de la Esfera
     L_cilindro: float = 10*(1e-3)              #Longitud cilindro
     L_libre_iman: float = 135*(1e-3)           #Longitud libre del imán a usar
@@ -110,8 +110,15 @@ class SectionParams:
     g_sub_ecs: float = 0.015*(1e-3)                   #Grosor de la capa de esmalte
     e_sub_cs: float = 0.118*(1e-3)                     #Grosor del Cable del solenoide (diámetro) #Usamos un AGW 38 como estimación
     N_sub_c_total:float= 5                            #Vueltas totales de cable a través del solenoide
-    densidad_neodimio:float =7500                     #Densidad del Neodimio N35 en Kg/m^3                          #
-    b_eta: float = 6750                               #Temperatura de delta (Grados Kelvin
+
+
+    #Fluidos
+
+    rho_0:   float = 1273.3                           # Densidad de referencia a 0 °C [kg/m³]
+    beta_rho: float = 0.6121                          # Coeficiente térmico de densidad [kg/(m³·K)]
+    densidad_neodimio:float =7500                     #Densidad del Neodimio N35 en Kg/m^3                          
+    eta_0: float = 3.30e-10                           # Factor preexponencial [Pa·s] de la glicerina
+    b_eta: float = 6640                               # Constante de Andrade   [K]
 
     #Sección Electromagnética/Materiales
 
@@ -153,6 +160,7 @@ class SectionParams:
     #Sección-Masa-Resorte-Amoprtiguamiento:
 
     m:float = field(default=m, init=False)
+    m_fluido: float =  field(init=False)
     N_sub_c_capas:float=  field(init=False)
     c_sub_Stokes_resorte: float = field(init=False)
     c_sub_Stokes_iman: float = field(init=False)
@@ -186,7 +194,11 @@ class SectionParams:
     h_sub_cs: float = field(init=False)
     N_sub_c:  int = field(init=False)                           
 
+    #Sección de fluidos 
+
+    rho_fluido: float = field(init=False)
     #Sección Electromagnética
+
     m_mag:float = field(default= m_mag, init=False) 
 
     #Sección de Resistencia
@@ -234,7 +246,7 @@ class SectionParams:
 #-----------------------------------------------------------------------------------------------
 #-----------------------------------------------------------------------------------------------
 
-#Sección Mecánica:
+#Computaciones Base:
 #--------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------
         self.N_sub_c= round(self.h_sub_p/self.e_sub_cs)                                #Número de vueltas del cable
@@ -250,6 +262,9 @@ class SectionParams:
         self.delta_h_sub_cs = self.e_sub_cs                                            #Altura del cable de solenoide en una vuelta
         self.mu_prom=((self.mu_sub_cero/(self.r_sub_p+self.e_sub_p))*
         ((self.mu_sub_f*self.r_sub_p)+(self.e_sub_p*self.mu_sub_PLA)))                 #Permeatividad equivalente
+        self.eta=self.eta_0 * np.exp(self.b_eta/self.temp)                               #Viscosidad en base a la temperatura
+        self.rho_fluido = self.rho_0 - self.beta_rho * (self.temp - 273.15)   # [kg/m³], temp en Kelvin
+
 #--------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------
 
@@ -336,7 +351,7 @@ class SectionParams:
         #Preguntamos el material del imán para estimar el momento magnético
         tipo_iman=int(input("¿El imán es de acero 440 (1), neodimio N32(2) o Neodimio N35(3)?"))   
         
-        Vol=((2*self.R_iman)**3)*0.75*np.pi
+        Vol=((self.R_iman)**3)*0.75*np.pi
 
         if (tipo_iman==1):
             #Estimación para Acero 440C                                             
@@ -355,6 +370,7 @@ class SectionParams:
 #Cálculo de parámetros de la EDO Mecánica
 #--------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------
+        self.m_fluido = np.abs(self.rho_fluido * (np.pi * (self.R_sub_e**2) * (self.h_sub_f - 0.75*self.R_sub_e)))
         self.m=self.m+self.m_fluido
         self.omega_sub_n = ((self.k/self.m)**0.5)                                      #Frecuencia Natural (Hz)
         self.Zeta = self.c/(2*((self.k*self.m)**0.5))                                  #Factor de Amortiguamiento
