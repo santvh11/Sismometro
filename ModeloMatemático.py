@@ -72,7 +72,7 @@ class SectionParams:
     #Sección-Masa-Resorte-Amoprtiguamiento:
 
     k: float =  300                           #Constante Elástica del Resorte (kg/s^2)
-    m: float =  1.5*(1e-3)                                #Masa de la esfera (Kg)
+    m =  1.5*(1e-3)                                #Masa de la esfera (Kg)
     g: float =  9.77                           #Constante gravitacional
     eta: float = 1.1                          #Viscocidad del fluido (kg/m*s)
     R_sub_e: float = 9.5*(1e-3)                      #Radio de la Esfera
@@ -82,6 +82,7 @@ class SectionParams:
 
     #Sección Mecánica:
 
+    e_sub_p:  float =  3*(1e-3)
     e_sub_p:  float =  3*(1e-3)                     #Grosor del Contenedor de PLA
     h_sub_p:  float =  36*(1e-3)                     #Altura del contenedor de PLA 
     r_sub_p:  float =  14*(1e-3)                        #Radio del Contenedor de PLA
@@ -90,9 +91,7 @@ class SectionParams:
     e_sub_cs: float = 0.118*(1e-3)                     #Grosor del Cable del solenoide (diámetro) #Usamos un AGW 38 como estimación
     N_sub_c_capas= 5                                 #Número de capas de vueltas de cable
     densidad_neodimio=7500                             #Densidad del Neodimio N35 en Kg/m^3                          #
-    b: float = 6750                                    #Temperatura de delta (Grados Kelvin)
-    A= 0.5
-    
+    b: float = 6750                                    #Temperatura de delta (Grados Kelvin
 
     #Sección Electromagnética
 
@@ -100,6 +99,11 @@ class SectionParams:
     chi_sub_A: float = 5*(1e+8)                 #Coeficiente para el momento magnético del Acero Inoxidable 440 C
     Q: float = 0                                #Carga inicial
     Q_dot: float = 0                            #Corriente inicial
+
+    #Configuraciones Reales
+    R = 383.1                                      #Resistencia Real 
+    L = 36.7*(1e-6)                                #Inductancia Real
+    C = 0.07*(1e-6)                                #Capacitancia Real
 
     #Sección de Resistencia
 
@@ -133,6 +137,7 @@ class SectionParams:
 
     #Sección-Masa-Resorte-Amoprtiguamiento:
 
+    m:float = field(default=m, init=False)
     c_sub_Stokes_resorte: float = field(init=False)
     c_sub_Stokes_iman: float = field(init=False)
     c_sub_Stokes: float = field(init=False)
@@ -177,11 +182,11 @@ class SectionParams:
     R_sub_s: float = field(init=False) 
     R_sub_c: float = field(init=False) 
     R_porcentaje: float = field(init=False)
-    R: float = field(init=False)
+    R: float = field(default= R, init=False)
 
     #Sección de Capacitancia
 
-    C: float = field(init=False)
+    C: float = field(default= C, init=False)
     C_inicial: float = field(init=False)
     C_N_sub_cs: float = field(init=False)
     C_N_sub_cs_capas: float = field(init=False)
@@ -190,7 +195,7 @@ class SectionParams:
     #Sección de Inductancia
     
     mu_prom: float= field(init=False)
-    L: float = field(init=False)
+    L: float = field(default= L, init=False)
     XC_inductiva:float= field(init=False)
 
     #Frecuencias circuito RLC
@@ -208,48 +213,32 @@ class SectionParams:
     # -------------------------------------------------------------------
 
     def __post_init__(self):
+
+#Pregunta para definir parámetros directos o estimados teóricamente
+#-----------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------
+        teoric_params= bool(input("¿Desea usar los parámetros con los datos teóricos? "
+        "(Enter) para sí y escriba algo para no"))
+#-----------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------
+            
+#Llamado a definiciones de cálculo teóricas:
+#-----------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------
+        if(teoric_params==True):
+            self.masa_teorico()
+            self.amortiguamiento_teorico()
+            self.capacitancia_teorico()
+            self.resistencia_teorico()
+            self.inductancia_teorico()
+            self.m_mag()
+            
+#-----------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------
         
-        #Sección Masa por Densidad:
-        pregunta_0= int(input("¿Desea usar la masa con los datos directos? (1) para si, (2) para no"))
-
-        if (pregunta_0==1):
-            self.m=self.m
-        elif (pregunta_0==2):
-            self.m=(self.R_sub_e)**3*np.pi*1.3333*self.densidad_neodimio
-        else:
-            ValueError("Seleccione una opción válida entre 0, 1")
-
-        print(f"masa estimada en :{self.m} Kg")
-
-
-
-
-        #Sección-Masa-Resorte-Amoprtiguamiento:
-        iman=int(input("¿Es una esfera (1) o cilindro(2)?"))
-        if iman==1:
-            self.c_sub_Stokes_iman = 6*np.pi*self.eta*self.R_sub_e                 #Coeficiente c para una esfera             
-        elif iman==2:
-            self.c_sub_Stokes_iman = np.abs(4*np.pi*self.eta*self.L_cilindro
-        /(np.log(self.L_cilindro/2*self.R_sub_e)+0.5))                             #Coeficiente c para un cilindro
-        else:
-            ValueError("Coloque (1) para esfera o (2) para cilindro, no se admiten más")
-        
-        self.c_sub_Stokes_resorte= np.abs(4*np.pi*self.eta*
-        self.L_cilindro/(np.log(self.L_cilindro/2*self.R_sub_e)+0.5))              #Coeficiente c para un cilindro (resorte recreado)
-
-        self.lambda_c = (self.R_sub_e/self.r_sub_p)                                    #Factor de lejanía (Habermann Faxen)
-        if (self.lambda_c > 0.6):
-            print("Factor de Haberman-Sayre (K) en uso")
-            num= 1 - (0.75857*self.lambda_c**5) 
-            den= 1-(2.10444*self.lambda_c) + (2.08877 * self.lambda_c**3) - (0.94813*self.lambda_c**5)
-            self.c_sub_lambda= num/den
-        elif (self.lambda_c <= 0.6):    
-            self.c_sub_lambda = self.c_sub_lambda = ((1-(2.104*(self.lambda_c)) +
-                    (2.089*(self.lambda_c**3))-0.948*(self.lambda_c**5)))              #Factor de corrección de cercanía (Haberman/Faxen)
-        print(f"El amortiguamiento auxiliar {self.c_sub_lambda}")
-        self.c= (self.c_sub_Stokes_iman+self.c_sub_Stokes_resorte)*self.c_sub_lambda                                   #coeficiente de amortiguamiento
-        print(f"La constante de amortiguamiento es es:{self.c}")
-        
+#Cálculo de la fuerza Inicial
+#--------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------
         fuerza=int(input("¿La fuerza es directa (1) o se calcula a partir de un MAS (2)?"))
         if fuerza==1:
             self.F_0 = 7                              #Fuerza en Newtons de la mesa
@@ -268,10 +257,13 @@ class SectionParams:
                 ValueError("No se ingresó una opción válida, oprima (1) o (2)")
         else:
             ValueError("No se ingresó una opción válida, oprima (1) o (2)")
+#--------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------
 
-
-
-        self.omega_sub_n = ((self.k/self.m)**0.5)                             #Frecuencia Natural (Hz)
+#Cálculo de parámetros de la EDO Mecánica
+#--------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------
+        self.omega_sub_n = ((self.k/self.m)**0.5)                                      #Frecuencia Natural (Hz)
         self.Zeta = self.c/(2*((self.k*self.m)**0.5))                                  #Factor de Amortiguamiento
         self.p_error_Zeta = self.Zeta*0.1                                              #Factor de tolerancia para elegir la naturaleza del sistema
         self.omega_sub_d =  self.omega_sub_n*(1-self.Zeta**2)**0.5                     #Frecuencia Natural Amortiguada
@@ -283,8 +275,12 @@ class SectionParams:
         self.omega_sub_s = 1-(self.omega/self.omega_sub_n)**2                          #Bloque de Frecuencias
         self.phi = np.arctan(self.Zeta_sub_omega/self.omega_sub_s)                     #Desfase entre la mesa y el sistema masa-resorte-amortiguador
         self.X = self.F_0/(self.k*(self.Zeta_sub_omega**2+self.omega_sub_s**2)**0.5)   #Constante para solución particular
+#--------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------
 
-        #Sección Mecánica:
+#Sección Mecánica:
+#--------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------
         self.N_sub_c= round(self.h_sub_p/self.e_sub_cs)                                #Número de vueltas del Cable
         self.e_total= (self.r_sub_p+self.e_sub_p+(0.5*self.e_sub_cs))                  #Radio total del Solenoide
         self.L_sub_s = self.N_sub_c*(self.N_sub_c_capas*(self.e_total*2*np.pi))        #Longitud del cable solenoide
@@ -295,79 +291,117 @@ class SectionParams:
         self.A_sub_cs = np.pi*((self.e_sub_cs*0.5)**2)                                 #Área de corte de cable solenoide
         self.A_sub_c = np.pi*((self.e_sub_c*0.5)**2)                                   #Área de corte de cable de conexión
         self.delta_h_sub_cs = self.e_sub_cs                                            #Altura del cable de solenoide en una vuelta
+#--------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------
 
-        #Sección Electromagnética
-
-        self.m_mag = 0 #Lo colocamos como un cero para un control de ciclos while
-
-        if(modelo_mk_1==True):     
-            while (self.m_mag==0):
-                
-                pregunta_1= int(input("¿Desea usar el momento magnético con los datos directos? (1) para si, (2) para no"))
-                if (pregunta_1==1):
-                    self.m_mag = 0.045                                                     #Momento Magnético de la Esfera (Datos directos)
-                    break 
-
-                elif(pregunta_1==2):
-                
-                    while(self.m_mag==0):
-
-                        control=int(input("¿El imán es de neodimio (1) o acero 440 (2)?"))   #Preguntamos el material del imán para estimar m_mag
-                        if (control==2):                                             
-                            self.m_mag = self.chi_sub_A*((2*self.R_sub_e)**3)                #Estimación para Acero 440C
-                        elif (control==1):
-                            self.m_mag = self.chi_sub_N*((2*self.R_sub_e)**3)                #Estimación para Neodimio N35
-                        else:
-                            print("Escriba (1) o (2), otra repuesta no es válida")
-                            continue 
-
-                else: 
-                    print("Escriba (1) o (2), otra repuesta no es válida")
-
-
-        print(f"Momento magnético configurado en: {self.m_mag}")                                                 
-
-
-        #Sección de Resistencia
-
-        self.R_sub_s = self.p_sub_cu*self.L_sub_s/self.A_sub_cs                                 #Resistencia del solenoide
-        self.R_sub_c = self.p_sub_cu*self.L_sub_c/self.A_sub_c                                  #Resistencia de la conexión
-        self.R = ((self.R_sub_a*(self.R_sub_s + self.R_sub_c+self.R_extra)) /
-               (self.R_sub_a + self.R_sub_s + self.R_sub_c+ self.R_extra))                       #Resistencia Total del sistema
-        self.R_porcentaje = (self.R_sub_a/
-                            (self.R_sub_a+self.R_sub_s+self.R_sub_c+self.R_extra))               #Resistencia para ley de faraday lenz
-
-        #Sección de Capacitancia
-    
-        self.C_inicial=((self.L_sub_s*self.epsilon_sub_cero*self.epsilon_sub_e)/
-                        (np.log((self.g_sub_ecs+self.e_sub_cs)/(self.e_sub_cs))))                 #Capacitancia de 2 cilindros paralelos (cables)
-        self.C_N_sub_cs= 2*self.C_inicial/self.N_sub_c                                            #Añadimos número de espiras                                           
-        self.C_N_sub_cs_capas=self.C_N_sub_cs*self.N_sub_c_capas                                  #Añadimos número de capas
-        self.C=self.C_N_sub_cs_capas
-        self.XC_capacitiva=(-1/(self.omega*self.C))                                             #Reactancia Capacitiva
-
-        #Sección de Inductancia
-        self.mu_prom=((self.mu_sub_cero/(self.r_sub_p+self.e_sub_p))*
-        ((self.mu_sub_f*self.r_sub_p)+(self.e_sub_p*self.mu_sub_PLA)))                          #Permeatividad equivalente
-
-
-        self.L= self.mu_prom*self.A_sub_cs*self.N_sub_c*self.N_sub_c_capas/self.h_sub_p         #Inductancia del Solenoide
-        self.XC_inductiva=(self.L*self.omega)                                                   #Reactancia Inductiva
-
-        #Frecuencias circuito RLC
+#Cálculo de Parámetros para el circuito RLC
+#--------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------
+        self.XC_inductiva=(self.L*self.omega)                             #Reactancia Inductiva
+        self.XC_capacitiva=(-1/(self.omega*self.C))                       #Reactancia Capacitiva
+        self.R_porcentaje = (self.R_sub_a/(self.R))                       #Resistencia para ley de faraday lenz
         self.alpha = self.R/(2*self.L)                                    #Inercia Eléctrica (Velocidad de consumo de corrientes parásitas)
         self.XC=(self.XC_capacitiva+self.XC_inductiva)                    #Reactancia total (parte imaginaria)
         self.omega_sub_0_phi_m = (1/((self.L*self.C)**0.5))               #Frecuencia de Resonancia (Frecuencia natural de oscilación del circuito)
-        #Sección de Control
+#--------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------
 
+#Sección de Control
+#--------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------
         self.t= np.linspace(self.a, self.b, self.puntos)                   #Vector de variable continua (tiempo)
-    
+#--------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------
 
 
-# -------------------------------------------------------------------
-# 2. Algoritmo de promedio de Fuerza de Laplace:
-#A partir de las ideas de abstracción de vectores, calculamos la integral de promedio
-# -------------------------------------------------------------------
+
+#Definiciones Teóricas
+#-----------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------
+    def masa_teorico(self):
+        self.m=(self.R_sub_e)**3*np.pi*1.3333*self.densidad_neodimio
+#-----------------------------------------------------------------------------------------------
+    def amortiguamiento_teorico (self):
+        #Cálculo de amortiguamiento con simplificación de Navier Stokes
+        self.c_sub_Stokes_iman = 6*np.pi*self.eta*self.R_sub_e                 #Coeficiente c para una esfera
+        self.c_sub_Stokes_resorte= np.abs(4*np.pi*self.eta*
+        self.L_cilindro/(np.log(self.L_cilindro/2*self.R_sub_e)+0.5))              #Coeficiente c para un cilindro (resorte recreado)
+
+        self.lambda_c = (self.R_sub_e/self.r_sub_p)                                    #Factor de lejanía (Habermann Faxen)
+        if (self.lambda_c > 0.6):
+
+             #Factor de corrección de cercanía (Haberman/Sayre)
+
+            den= 1 - (0.75857*self.lambda_c**5) 
+            num= 1-(2.10444*self.lambda_c) + (2.08877 * self.lambda_c**3) - (0.94813*self.lambda_c**5)
+            self.c_sub_lambda= num/den
+
+        elif (self.lambda_c <= 0.6):
+
+            #Factor de corrección de cercanía (Haberman/Faxen)  
+               
+            self.c_sub_lambda = ((1-(2.104*(self.lambda_c)) +
+            (2.089*(self.lambda_c**3))-0.948*(self.lambda_c**5))) 
+                      
+            #coeficiente de amortiguamiento final              
+            self.c= (self.c_sub_Stokes_iman+self.c_sub_Stokes_resorte)/self.c_sub_lambda    
+
+#--------------------------------------------------------------------------------------------------
+    def capacitancia_teorico(self):
+
+        #Capacitancia de 2 cilindros paralelos (cables)
+        self.C_inicial=((self.L_sub_s*self.epsilon_sub_cero*self.epsilon_sub_e)/
+        (np.log((self.g_sub_ecs+self.e_sub_cs)/(self.e_sub_cs))))
+
+        #Añadimos número de espiras                 
+        self.C_N_sub_cs= 2*self.C_inicial/self.N_sub_c
+
+        #Añadimos número de capas                                                                                       
+        self.C=self.C_N_sub_cs*self.N_sub_c_capas  
+
+#--------------------------------------------------------------------------------------------------
+    def inductancia_teorico(self):
+        
+        #Permeatividad equivalente
+        self.mu_prom=((self.mu_sub_cero/(self.r_sub_p+self.e_sub_p))*
+            ((self.mu_sub_f*self.r_sub_p)+(self.e_sub_p*self.mu_sub_PLA)))
+        
+        #Inductancia del Solenoide                          
+        self.L= self.mu_prom*self.A_sub_cs*self.N_sub_c*self.N_sub_c_capas/self.h_sub_p 
+
+#--------------------------------------------------------------------------------------------------
+    def resistencia_teorico(self):
+
+        #Resistencia del solenoide
+        self.R_sub_s = self.p_sub_cu*self.L_sub_s/self.A_sub_cs
+
+        #Resistencia de la conexión                                 
+        self.R_sub_c = self.p_sub_cu*self.L_sub_c/self.A_sub_c
+
+        #Resistencia Total del sistema                                  
+        self.R = ((self.R_sub_a*(self.R_sub_s + self.R_sub_c+self.R_extra)) /
+               (self.R_sub_a + self.R_sub_s + self.R_sub_c+ self.R_extra))    
+                                   
+#--------------------------------------------------------------------------------------------------
+    def m_mag(self):
+
+        #Preguntamos el material del imán para estimar el momento magnético
+        tipo_iman=int(input("¿El imán es de neodimio (1) o acero 440 (2)?"))   
+        if (tipo_iman==2):
+
+            #Estimación para Acero 440C                                             
+            self.m_mag = self.chi_sub_A*((2*self.R_sub_e)**3)
+
+        elif (tipo_iman==1):
+            #Estimación para Neodimio N32
+            self.m_mag = self.chi_sub_N*((2*self.R_sub_e)**3)                
+        else:
+            ValueError("Escriba (1) o (2), otra repuesta no es válida")
+#--------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------
+
+#--------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------- 
 
 
 def Factores_Acople (params:SectionParams)-> float: 
@@ -410,8 +444,6 @@ def Factores_Acople (params:SectionParams)-> float:
 
     G_sub_L=B_x*L_sub_s
 
-    print (f"el factor G (promedio campo magnético) es: {G_sub_A}")
-
     return G_sub_L, G_sub_A  
 
 # -------------------------------------------------------------------
@@ -433,6 +465,7 @@ def Solver (modelo_mk1:bool, modelo_mk2:bool, params:SectionParams)-> float:
         #Desempaquetado de variables de Section Params
         m=params.m
         c=params.c
+        c_sub_lambda=params.c_sub_lambda
         k=params.k
         L=params.L
         C=params.C
@@ -456,6 +489,23 @@ def Solver (modelo_mk1:bool, modelo_mk2:bool, params:SectionParams)-> float:
         r_sub_p=params.r_sub_p
         eta=params.eta
 
+# Prints de Parámetros Base:
+#--------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------- 
+        print(f"masa estimada en :{m} Kg")                              #Masa   
+        print(f"El amortiguamiento auxiliar es:{c_sub_lambda}")         #Amortiguamiento Auxiliar
+        print(f"La constante de amortiguamiento  es de :{c} Kg/s")      #Amortiguamiento
+        print(f"La constante elástica es de :{k} Kg/s^2")               #Constante Elástica
+        print(f"La resistencia es de :{R} Ohmnios")                     #Resistencia
+        print(f"La inductancia es de :{L} H")                           #Inductancia
+        print(f"La capacitancia es de :{C} F")                          #Capacitancia
+        print(f"Momento magnético configurado en: {self.m_mag}")        #Momento Magnético
+        print (f"El factor de Magnético de Área es: {G_sub_A}")         #Factor Magnético de Área
+        print (f"El factor de Magnético de Área es: {G_sub_L}")         #Factor Magnético de Longitud
+        print(f"El factor Z (amortiguamiento mecánico) es de: {Zeta}") 
+#--------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------- 
+
         #A: Matriz de acople de constantes
         A = np.array([
         [0, 1, 0, 0],
@@ -466,14 +516,6 @@ def Solver (modelo_mk1:bool, modelo_mk2:bool, params:SectionParams)-> float:
 
         # 3. Encuentra Eigenvalos (w) y Eigenvectores (v)
         eigenvalues, eigenvectors = np.linalg.eig(A)
-
-
-
-        print("Eigenvalores del sistema acoplado:")
-        print(eigenvalues)
-        print("Eigenvectores del sistema acoplado:")
-        print(eigenvectors)
-
 
         # Matriz B: La fuerza externa F(t) afecta a la aceleración (z_dot_dot)
         F_t = np.array([[0], [1/m], [0], [0]])
@@ -520,14 +562,12 @@ def Solver (modelo_mk1:bool, modelo_mk2:bool, params:SectionParams)-> float:
 
         #Damos los parámetros de construcción
 
-        print(f"El factor Z (amortiguamiento mecánico) es de: {Zeta}")
+        
 
         delta_electromagnético=alpha-omega_sub_0_phi_m
 
         print(f"El delta entre amortiguamientos electromagnéticos (alpha-omega_sub_0_phi_m) de: {delta_electromagnético}")
-        print(f"La resistencia es de {R}")
-        print(f"La capacitancia es de {C}")
-        print(f"La inductancia es de {L}")
+
 
       
         #Listas de colores y de nombres para las gráficas
