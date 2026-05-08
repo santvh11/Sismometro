@@ -52,8 +52,11 @@ while True:
 #d_sección_transversal: 75*(1e-5) metros
 #L_libre_iman=1125*(1e-4) metros
 # ----------------
-#4.1- (resorte pequeño)
-#6.2- (resorte mediano)
+#1.5*(1e-3) Kg (resorte pequeño)
+#3.4*(1e-3) Kg (resorte mediano)
+#k= 300 (resorte pequeño)
+#k= 104 (resorte mediano)
+ 
 
 @dataclass
 class SectionParams:
@@ -64,30 +67,31 @@ class SectionParams:
     
     #Condiciones Climáticas
 
-    temp: float = #Temperatura del ambiente en Kelvin
+    temp: float = 299.15 #Temperatura del ambiente en Kelvin (26 grados celsiud)
 
     #Sección-Masa-Resorte-Amoprtiguamiento:
 
-    k: float =  38150                           #Constante Elástica del Resorte (kg/s^2)
-    m: float =  0.3132                                #Masa de la esfera (Kg)
-    g: float = 1.1                             #Constante gravitacional
-    eta: float = 360                          #Viscocidad del fluido (kg/m*s)
-    R_sub_e: float = 8*(1e-3)                      #Radio de la Esfera
+    k: float =  300                           #Constante Elástica del Resorte (kg/s^2)
+    m: float =  1.5*(1e-3)                                #Masa de la esfera (Kg)
+    g: float =  9.77                           #Constante gravitacional
+    eta: float = 1.1                          #Viscocidad del fluido (kg/m*s)
+    R_sub_e: float = 9.5*(1e-3)                      #Radio de la Esfera
     L_cilindro: float = 10*(1e-3)                          #Longitud cilindro
-    L_libre_iman: float =                                   #Longitud libre del imán a usar
+    L_libre_iman: float = 135*(1e-3)                                  #Longitud libre del imán a usar
     omega: float = 628.3                            #Frecuencia de vibración de la mesa (Radianes)
 
     #Sección Mecánica:
 
     e_sub_p:  float =  3*(1e-3)                     #Grosor del Contenedor de PLA
     h_sub_p:  float =  36*(1e-3)                     #Altura del contenedor de PLA 
-    r_sub_p:  float =  30*(1e-3)                        #Radio del Contenedor de PLA
+    r_sub_p:  float =  14*(1e-3)                        #Radio del Contenedor de PLA
     h_sub_f:  float =  34*(1e-3)                         #altura del fluido
     g_sub_ecs: float = 0.015*(1e-3)                          #Grosor de la capa de esmalte
     e_sub_cs: float = 0.118*(1e-3)                     #Grosor del Cable del solenoide (diámetro) #Usamos un AGW 38 como estimación
     N_sub_c_capas= 5                                 #Número de capas de vueltas de cable
     densidad_neodimio=7500                             #Densidad del Neodimio N35 en Kg/m^3                          #
     b: float = 6750                                    #Temperatura de delta (Grados Kelvin)
+    A= 0.5
     
 
     #Sección Electromagnética
@@ -129,6 +133,8 @@ class SectionParams:
 
     #Sección-Masa-Resorte-Amoprtiguamiento:
 
+    c_sub_Stokes_resorte: float = field(init=False)
+    c_sub_Stokes_iman: float = field(init=False)
     c_sub_Stokes: float = field(init=False)
     lambda_c: float = field(init=False)
     c_sub_lambda: float = field(init=False)
@@ -147,6 +153,7 @@ class SectionParams:
     omega_sub_s: float = field(init=False)
     phi: float = field(init=False)  
     X: float = field(init=False)
+    
 
     #Sección Mecánica:
 
@@ -240,7 +247,7 @@ class SectionParams:
             self.c_sub_lambda = self.c_sub_lambda = ((1-(2.104*(self.lambda_c)) +
                     (2.089*(self.lambda_c**3))-0.948*(self.lambda_c**5)))              #Factor de corrección de cercanía (Haberman/Faxen)
         print(f"El amortiguamiento auxiliar {self.c_sub_lambda}")
-        self.c= (self.c_sub_Stokes+self.c_sub_Stokes_resorte)/self.c_sub_lambda                                   #coeficiente de amortiguamiento
+        self.c= (self.c_sub_Stokes_iman+self.c_sub_Stokes_resorte)*self.c_sub_lambda                                   #coeficiente de amortiguamiento
         print(f"La constante de amortiguamiento es es:{self.c}")
         
         fuerza=int(input("¿La fuerza es directa (1) o se calcula a partir de un MAS (2)?"))
