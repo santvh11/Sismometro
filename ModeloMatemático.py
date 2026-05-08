@@ -105,13 +105,13 @@ class SectionParams:
 
     e_sub_p:  float =  3*(1e-3)                     #Grosor del Contenedor de PLA
     h_sub_p:  float =  36*(1e-3)                     #Altura del contenedor de PLA 
-    r_sub_p:  float =  14*(1e-3)                        #Radio del Contenedor de PLA
-    h_sub_f:  float =  34*(1e-3)                         #altura del fluido
-    g_sub_ecs: float = 0.015*(1e-3)                          #Grosor de la capa de esmalte
+    r_sub_p:  float =  14*(1e-3)                      #Radio del Contenedor de PLA
+    h_sub_f:  float =  34*(1e-3)                      #altura del fluido
+    g_sub_ecs: float = 0.015*(1e-3)                   #Grosor de la capa de esmalte
     e_sub_cs: float = 0.118*(1e-3)                     #Grosor del Cable del solenoide (diámetro) #Usamos un AGW 38 como estimación
-    N_sub_c_capas:float= 5                                 #Número de capas de vueltas de cable
+    N_sub_c_total:float= 5                            #Vueltas totales de cable a través del solenoide
     densidad_neodimio:float =7500                     #Densidad del Neodimio N35 en Kg/m^3                          #
-    b_eta: float = 6750                                    #Temperatura de delta (Grados Kelvin
+    b_eta: float = 6750                               #Temperatura de delta (Grados Kelvin
 
     #Sección Electromagnética
 
@@ -152,6 +152,7 @@ class SectionParams:
     #Sección-Masa-Resorte-Amoprtiguamiento:
 
     m:float = field(default=m, init=False)
+    N_sub_c_capas:float=  field(init=False)
     c_sub_Stokes_resorte: float = field(init=False)
     c_sub_Stokes_iman: float = field(init=False)
     c_sub_Stokes: float = field(init=False)
@@ -235,7 +236,8 @@ class SectionParams:
 #Sección Mecánica:
 #--------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------
-        self.N_sub_c= round(self.h_sub_p/self.e_sub_cs)                                #Número de vueltas del Cable
+        self.N_sub_c= round(self.h_sub_p/self.e_sub_cs)                                #Número de vueltas del cable
+        self.N_sub_c_capas= self.N_sub_c_total/self.N_sub_c                            #Número de capass del cable                                             
         self.e_total= (self.r_sub_p+self.e_sub_p+(0.5*self.e_sub_cs))                  #Radio total del Solenoide
         self.L_sub_s = self.N_sub_c*(self.N_sub_c_capas*(self.e_total*2*np.pi))        #Longitud del cable solenoide
         self.A_sub_s = (self.N_sub_c*(self.N_sub_c_capas*
@@ -621,7 +623,7 @@ def Solver (modelo_mk1:bool, modelo_mk2:bool, params:SectionParams)-> float:
         # Eliminamos duplicados para ver las dos frecuencias principales del sistema
         frecuencias_unicas = np.unique(frecuencias_naturales)*2*np.pi
 
-        print(f"Frecuencias naturales del sistema acoplado: {frecuencias_unicas:.3e} Hz ")
+        print(f"Frecuencias naturales del sistema acoplado: {frecuencias_unicas} Hz ")
 
         #Computamos el voltaje de Salida partiendo de la ley de Ohm Fasorial (V=ZR)
         I_Re=X_total.real[3]
