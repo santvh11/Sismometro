@@ -113,11 +113,12 @@ class SectionParams:
     densidad_neodimio:float =7500                     #Densidad del Neodimio N35 en Kg/m^3                          #
     b_eta: float = 6750                               #Temperatura de delta (Grados Kelvin
 
-    #Sección Electromagnética
+    #Sección Electromagnética/Materiales
 
-    chi_sub_N: float = 8*(1e+8)                 #Coeficiente para el momento magnético del Neodimio N35
-    chi_sub_A: float = 5*(1e+8)                 #Coeficiente para el momento magnético del Acero Inoxidable 440 C
-    
+    R_iman: float = 3*(1e-3)             #Radio del imán magnético
+    Br_A: float = 0.9                  #Coeficiente para el momento magnético del Acero Inoxidable 440 C (Teslas)
+    Br_N32: float = 1.14                 #Coeficiente para el momento magnético del Neodimio N32 (Teslas)
+    Br_N35: float = 1.22                 #Coeficiente para el momento magnético del Neodimio N35 (Teslas)
 
     #Sección de Resistencia
 
@@ -333,23 +334,28 @@ class SectionParams:
     def m_mag_teorico(self):
 
         #Preguntamos el material del imán para estimar el momento magnético
-        tipo_iman=int(input("¿El imán es de neodimio (1) o acero 440 (2)?"))   
-        if (tipo_iman==2):
+        tipo_iman=int(input("¿El imán es de acero 440 (1), neodimio N32(2) o Neodimio N35(3)?"))   
+        
+        Vol=((2*self.R_iman)**3)*0.75*np.pi
 
+        if (tipo_iman==1):
             #Estimación para Acero 440C                                             
-            self.m_mag = self.chi_sub_A*((2*self.R_sub_e)**3)
-
-        elif (tipo_iman==1):
+            self.m_mag = self.Br_A*Vol*self.mu_prom
+        elif (tipo_iman==2):
             #Estimación para Neodimio N32
-            self.m_mag = self.chi_sub_N*((2*self.R_sub_e)**3)                
+            self.m_mag = self.Br_N32*Vol*self.mu_prom
+        elif (tipo_iman==3):
+            #Estimación para Neodimio N35
+            self.m_mag = self.Br_N35*Vol*self.mu_prom           
         else:
-            ValueError("Escriba (1) o (2), otra repuesta no es válida")
+            ValueError("Escriba (1) o (2) o (3), otra repuesta no es válida")
 #--------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------
 
 #Cálculo de parámetros de la EDO Mecánica
 #--------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------
+        self.m=self.m+self.m_fluido
         self.omega_sub_n = ((self.k/self.m)**0.5)                                      #Frecuencia Natural (Hz)
         self.Zeta = self.c/(2*((self.k*self.m)**0.5))                                  #Factor de Amortiguamiento
         self.omega_sub_d =  self.omega_sub_n*(1-self.Zeta**2)**0.5                     #Frecuencia Natural Amortiguada
