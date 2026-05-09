@@ -75,7 +75,7 @@ class SectionParams:
     c= 0.43                                               #Coeficiente de Amortiguamiento (Kg/s)
     m: float = 1.5*(1e-3)                                 #Masa del sistema
     k: float =  300                                       #Constante Elástica del Resorte (kg/s^2)
-    m_mag: float= 0.0124                                  #Escalar del momento magnético (Teslas)
+    m_mag: float= 0.05                                  #Escalar del momento magnético (Teslas)
     # -------------------------------------------------------------------
     # -------------------------------------------------------------------
 
@@ -109,7 +109,7 @@ class SectionParams:
     h_sub_f:  float =  34*(1e-3)                      #altura del fluido
     g_sub_ecs: float = 0.015*(1e-3)                   #Grosor de la capa de esmalte
     e_sub_cs: float = 0.118*(1e-3)                     #Grosor del Cable del solenoide (diámetro) #Usamos un AGW 38 como estimación
-    N_sub_c_total:float= 400                            #Vueltas totales de cable a través del solenoide
+    N_sub_c_total:float= 4000                            #Vueltas totales de cable a través del solenoide
 
 
     #Fluidos
@@ -122,7 +122,7 @@ class SectionParams:
 
     #Sección Electromagnética/Materiales
 
-    R_iman: float = 3*(1e-3)             #Radio del imán magnético
+    R_iman: float = 1.5*(1e-3)             #Radio del imán magnético
     Br_A: float = 0.9                  #Coeficiente para el momento magnético del Acero Inoxidable 440 C (Teslas)
     Br_N32: float = 1.14                 #Coeficiente para el momento magnético del Neodimio N32 (Teslas)
     Br_N35: float = 1.22                 #Coeficiente para el momento magnético del Neodimio N35 (Teslas)
@@ -132,7 +132,7 @@ class SectionParams:
     e_sub_c: float = 17*(1e-3)                           #Grosor del Cable de conexión (diámetro)
     L_sub_c: float = 5*(1e-2)                          #Longitud del cable de conexión
     R_sub_a: float =  1*(1e+8)                          #Resistencia de entrada del amplificador de señal
-    R_extra: float = 1200                               #Resistencia añadida al circuito
+    R_extra: float = 0                               #Resistencia añadida al circuito
 
     #Sección de Capacitancia
 
@@ -238,14 +238,6 @@ class SectionParams:
 
     def __post_init__(self):
 
-#Pregunta para definir parámetros directos o estimados teóricamente
-#-----------------------------------------------------------------------------------------------
-#-----------------------------------------------------------------------------------------------
-        teoric_params= bool(input("¿Desea usar los parámetros con los datos directos? "
-        "(Enter) para sí y escriba algo para no"))
-#-----------------------------------------------------------------------------------------------
-#-----------------------------------------------------------------------------------------------
-
 #Computaciones Base:
 #--------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------
@@ -268,6 +260,14 @@ class SectionParams:
 #--------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------
 
+#Pregunta para definir parámetros directos o estimados teóricamente
+#-----------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------
+        teoric_params= bool(input("¿Desea usar los parámetros con los datos directos? "
+        "(Enter) para sí y escriba algo para no"))
+#-----------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------
+
 #Llamado a definiciones de cálculo teóricas:
 #-----------------------------------------------------------------------------------------------
 #-----------------------------------------------------------------------------------------------
@@ -281,91 +281,6 @@ class SectionParams:
             
 #-----------------------------------------------------------------------------------------------
 #-----------------------------------------------------------------------------------------------
-
-#Definiciones Teóricas
-#-----------------------------------------------------------------------------------------------
-#-----------------------------------------------------------------------------------------------
-        def masa_teorico(self):
-            self.m=(self.R_sub_e)**3*np.pi*1.3333*self.densidad_neodimio
-#-----------------------------------------------------------------------------------------------
-        def amortiguamiento_teorico (self):
-            #Cálculo de amortiguamiento con simplificación de Navier Stokes
-            self.c_sub_Stokes_iman = 6*np.pi*self.eta*self.R_sub_e                 #Coeficiente c para una esfera
-            self.c_sub_Stokes_resorte= np.abs(4*np.pi*self.eta*
-            self.L_cilindro/(np.log(self.L_cilindro/2*self.R_sub_e)+0.5))              #Coeficiente c para un cilindro (resorte recreado)
-
-            self.lambda_c = (self.R_sub_e/self.r_sub_p)                                    #Factor de lejanía (Habermann Faxen)
-            if (self.lambda_c > 0.6):
-
-                #Factor de corrección de cercanía (Haberman/Sayre)
-
-                den= 1 - (0.75857*self.lambda_c**5) 
-                num= 1-(2.10444*self.lambda_c) + (2.08877 * self.lambda_c**3) - (0.94813*self.lambda_c**5)
-                self.c_sub_lambda= num/den
-
-            elif (self.lambda_c <= 0.6):
-
-                #Factor de corrección de cercanía (Haberman/Faxen)  
-               
-                self.c_sub_lambda = ((1-(2.104*(self.lambda_c)) +
-                (2.089*(self.lambda_c**3))-0.948*(self.lambda_c**5))) 
-                      
-            #coeficiente de amortiguamiento final              
-            self.c= (self.c_sub_Stokes_iman+self.c_sub_Stokes_resorte)/self.c_sub_lambda    
-
-#--------------------------------------------------------------------------------------------------
-        def capacitancia_teorico(self):
-
-            #Capacitancia de 2 cilindros paralelos (cables)
-            self.C_inicial=((self.L_sub_s*self.epsilon_sub_cero*self.epsilon_sub_e)/
-            (np.log((self.g_sub_ecs+self.e_sub_cs)/(self.e_sub_cs))))
-
-            #Añadimos número de espiras                 
-            self.C_N_sub_cs= 2*self.C_inicial/self.N_sub_c
-
-            #Añadimos número de capas                                                                                       
-            self.C=self.C_N_sub_cs*self.N_sub_c_capas  
-
-#--------------------------------------------------------------------------------------------------
-        def inductancia_teorico(self):
-        
-            #Inductancia del Solenoide                          
-            self.L= self.mu_prom*self.A_sub_cs*self.N_sub_c*self.N_sub_c_capas/self.h_sub_p 
-
-#--------------------------------------------------------------------------------------------------
-        def resistencia_teorico(self):
-
-            #Resistencia del solenoide
-            self.R_sub_s = self.p_sub_cu*self.L_sub_s/self.A_sub_cs
-
-            #Resistencia de la conexión                                 
-            self.R_sub_c = self.p_sub_cu*self.L_sub_c/self.A_sub_c
-
-            #Resistencia Total del sistema                                  
-            self.R = ((self.R_sub_a*(self.R_sub_s + self.R_sub_c+self.R_extra)) /
-                   (self.R_sub_a + self.R_sub_s + self.R_sub_c+ self.R_extra))    
-                                   
-#--------------------------------------------------------------------------------------------------
-        def m_mag_teorico(self):
-
-            #Preguntamos el material del imán para estimar el momento magnético
-            tipo_iman=int(input("¿El imán es de acero 440 (1), neodimio N32(2) o Neodimio N35(3)?"))   
-        
-            Vol=((self.R_iman)**3)*0.75*np.pi
-
-            if (tipo_iman==1):
-                #Estimación para Acero 440C                                             
-                self.m_mag = self.Br_A*Vol*self.mu_prom
-            elif (tipo_iman==2):
-                #Estimación para Neodimio N32
-                self.m_mag = self.Br_N32*Vol*self.mu_prom
-            elif (tipo_iman==3):
-                #Estimación para Neodimio N35
-                self.m_mag = self.Br_N35*Vol*self.mu_prom           
-            else:
-                ValueError("Escriba (1) o (2) o (3), otra repuesta no es válida")
-#--------------------------------------------------------------------------------------------------
-#--------------------------------------------------------------------------------------------------
 
 #Cálculo de parámetros de la EDO Mecánica
 #--------------------------------------------------------------------------------------------------
@@ -420,6 +335,92 @@ class SectionParams:
                 ValueError("No se ingresó una opción válida, oprima (1) o (2)")
         else:
             ValueError("No se ingresó una opción válida, oprima (1) o (2)")
+#--------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------
+
+#Definiciones Teóricas
+#-----------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------
+    def masa_teorico(self):
+        self.m=(self.R_sub_e)**3*np.pi*1.3333*self.densidad_neodimio
+           
+#-----------------------------------------------------------------------------------------------
+    def amortiguamiento_teorico (self):
+        #Cálculo de amortiguamiento con simplificación de Navier Stokes
+        self.c_sub_Stokes_iman = 6*np.pi*self.eta*self.R_sub_e                 #Coeficiente c para una esfera
+        self.c_sub_Stokes_resorte= np.abs(4*np.pi*self.eta*
+        self.L_cilindro/(np.log(self.L_cilindro/2*self.R_sub_e)+0.5))              #Coeficiente c para un cilindro (resorte recreado)
+
+        self.lambda_c = (self.R_sub_e/self.r_sub_p)                                    #Factor de lejanía (Habermann Faxen)
+        if (self.lambda_c > 0.6):
+
+            #Factor de corrección de cercanía (Haberman/Sayre)
+
+            den= 1 - (0.75857*self.lambda_c**5) 
+            num= 1-(2.10444*self.lambda_c) + (2.08877 * self.lambda_c**3) - (0.94813*self.lambda_c**5)
+            self.c_sub_lambda= num/den
+
+        elif (self.lambda_c <= 0.6):
+
+            #Factor de corrección de cercanía (Haberman/Faxen)  
+               
+            self.c_sub_lambda = ((1-(2.104*(self.lambda_c)) +
+            (2.089*(self.lambda_c**3))-0.948*(self.lambda_c**5))) 
+                      
+        #coeficiente de amortiguamiento final              
+        self.c= (self.c_sub_Stokes_iman+self.c_sub_Stokes_resorte)/self.c_sub_lambda    
+
+#--------------------------------------------------------------------------------------------------
+    def capacitancia_teorico(self):
+
+        #Capacitancia de 2 cilindros paralelos (cables)
+        self.C_inicial=((self.L_sub_s*self.epsilon_sub_cero*self.epsilon_sub_e)/
+        (np.log((self.g_sub_ecs+self.e_sub_cs)/(self.e_sub_cs))))
+
+        #Añadimos número de espiras                 
+        self.C_N_sub_cs= 2*self.C_inicial/self.N_sub_c
+
+        #Añadimos número de capas                                                                                       
+        self.C=self.C_N_sub_cs*self.N_sub_c_capas  
+
+#--------------------------------------------------------------------------------------------------
+    def inductancia_teorico(self):
+        
+        #Inductancia del Solenoide                          
+        self.L= self.mu_prom*self.A_sub_cs*self.N_sub_c*self.N_sub_c_capas/self.h_sub_p 
+
+#--------------------------------------------------------------------------------------------------
+    def resistencia_teorico(self):
+
+        #Resistencia del solenoide
+        self.R_sub_s = self.p_sub_cu*self.L_sub_s/self.A_sub_cs
+
+        #Resistencia de la conexión                                 
+        self.R_sub_c = self.p_sub_cu*self.L_sub_c/self.A_sub_c
+
+        #Resistencia Total del sistema                                  
+        self.R = ((self.R_sub_a*(self.R_sub_s + self.R_sub_c+self.R_extra)) /
+        (self.R_sub_a + self.R_sub_s + self.R_sub_c+ self.R_extra))    
+                                   
+#--------------------------------------------------------------------------------------------------
+    def m_mag_teorico(self):
+
+        #Preguntamos el material del imán para estimar el momento magnético
+        tipo_iman=int(input("¿El imán es de acero 440 (1), neodimio N32(2) o Neodimio N35(3)?"))   
+        
+        Vol=((self.R_iman)**3)*0.75*np.pi
+
+        if (tipo_iman==1):
+            #Estimación para Acero 440C                                             
+            self.m_mag = self.Br_A*Vol*self.mu_prom
+        elif (tipo_iman==2):
+            #Estimación para Neodimio N32
+            self.m_mag = self.Br_N32*Vol*self.mu_prom
+        elif (tipo_iman==3):
+            #Estimación para Neodimio N35
+            self.m_mag = self.Br_N35*Vol*self.mu_prom           
+        else:
+            ValueError("Escriba (1) o (2) o (3), otra repuesta no es válida")
 #--------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------
 
