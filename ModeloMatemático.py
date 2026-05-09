@@ -104,12 +104,12 @@ class SectionParams:
     omega= omega_Hz *2*np.pi                   #Paso a radianes (Radianes)
 
     e_sub_p:  float =  3*(1e-3)                     #Grosor del Contenedor de PLA
-    h_sub_p:  float =  36*(1e-3)                     #Altura del contenedor de PLA 
+    h_sub_p:  float =  34*(1e-3)                     #Altura del contenedor de PLA 
     r_sub_p:  float =  14*(1e-3)                      #Radio del Contenedor de PLA
     h_sub_f:  float =  34*(1e-3)                      #altura del fluido
     g_sub_ecs: float = 0.015*(1e-3)                   #Grosor de la capa de esmalte
     e_sub_cs: float = 0.118*(1e-3)                     #Grosor del Cable del solenoide (diámetro) #Usamos un AGW 38 como estimación
-    N_sub_c_total:float= 4000                            #Vueltas totales de cable a través del solenoide
+    N_sub_c_total:float= 2000                            #Vueltas totales de cable a través del solenoide
 
 
     #Fluidos
@@ -247,8 +247,8 @@ class SectionParams:
         self.L_sub_s = self.N_sub_c*(self.N_sub_c_capas*(self.e_total*2*np.pi))        #Longitud del cable solenoide
         self.A_sub_s = (self.N_sub_c*(self.N_sub_c_capas*
         (4*(np.pi**2))*(self.e_total*self.e_sub_cs)))                                  #Área del cable de solenoide
-        self.A_effec= (2*self.e_sub_cs*np.pi*(self.r_sub_p+self.e_sub_p)
-        *self.N_sub_c*self.N_sub_c_capas)                                              #Área efectiva de contacto con campo magnético en el eje z
+        self.A_effec= (8*self.e_sub_cs*np.pi*(self.r_sub_p+self.e_sub_p)
+        *self.N_sub_c_total)                                              #Área efectiva de contacto con campo magnético en el eje z
         self.A_sub_cs = np.pi*((self.e_sub_cs*0.5)**2)                                 #Área de corte de cable solenoide
         self.A_sub_c = np.pi*((self.e_sub_c*0.5)**2)                                   #Área de corte de cable de conexión
         self.delta_h_sub_cs = self.e_sub_cs                                            #Altura del cable de solenoide en una vuelta
@@ -300,7 +300,7 @@ class SectionParams:
         
         self.XC_inductiva=(self.L*self.omega)                             #Reactancia Inductiva
         self.XC_capacitiva=(-1/(self.omega*self.C))                       #Reactancia Capacitiva
-        self.R_porcentaje = (self.R_sub_a/(self.R))                       #Resistencia para ley de faraday lenz
+        self.R_porcentaje = (self.R_sub_a/(self.R+self.R_sub_a))                       #Resistencia para ley de faraday lenz
         self.alpha = self.R/(2*self.L)                                    #Inercia Eléctrica (Velocidad de consumo de corrientes parásitas)
         self.XC=(self.XC_capacitiva+self.XC_inductiva)                    #Reactancia total (parte imaginaria)
         self.omega_sub_0_phi_m = (1/((self.L*self.C)**0.5))               #Frecuencia de Resonancia (Frecuencia natural de oscilación del circuito)
@@ -439,22 +439,24 @@ def Factores_Acople (params:SectionParams)-> float:
     mu_prom=params.mu_prom
     m_mag=params.m_mag
     A_effec=params.A_effec
+    mu_sub_cero=params.mu_sub_cero
 
     #Precomputamos los bloques de la integral 
     bloque_constante=r_sub_p+e_sub_p
-    bloque_variable_lim_simétrico=h_sub_p*0.5
-    bloque_raíz=((bloque_variable_lim_simétrico)**2+(bloque_constante)**2)**0.5
+    bloque_raíz=((h_sub_p)**2+(bloque_constante)**2)**0.5
 
 
     #Añadimos constantes físicas
-    constantes_magneticas=(0.75*m_mag*mu_prom)/np.pi
+    constantes_magneticas=(0.25*m_mag*mu_sub_cero)/np.pi
 
     #Campo magnético para fuerza de Laplace
-    B_x=(1/(bloque_raíz*bloque_constante))*constantes_magneticas
+    B_x=np.abs(((bloque_constante-bloque_raíz)/(bloque_raíz*
+        (bloque_constante**2)))*(3/2)*constantes_magneticas)
 
     #Campo Magnético para el flujo
-    dB_z=((bloque_constante*h_sub_p)/(bloque_raíz**5))*constantes_magneticas
-    dB_x=(0.5*(bloque_constante**2)/(bloque_raíz**5))*constantes_magneticas
+    dB_z=np.abs((((2*(h_sub_p**2)-(bloque_constante**2))/
+        (bloque_raíz**5))-(1/(bloque_constante**3)))*constantes_magneticas)
+    dB_x=np.abs(((h_sub_p)/(bloque_raíz**5))*3*bloque_constante*constantes_magneticas)
 
 
     #d_phi/d_t :Acople G_sub_A:
@@ -524,8 +526,8 @@ def Solver (modelo_mk1:bool, modelo_mk2:bool, params:SectionParams)-> float:
         print(f"La inductancia es de :{L:.3e} H")                            #Inductancia
         print(f"La capacitancia es de :{C:.3e} F")                           #Capacitancia
         print(f"Momento magnético configurado en: {m_mag:.3e}")              #Momento Magnético
-        print (f"El factor de Magnético de Área es: {G_sub_A:.3e}")          #Factor Magnético de Área
-        print (f"El factor de Magnético de Área es: {G_sub_L:.3e}")          #Factor Magnético de Longitud
+        print (f"El factor  Magnético de Área es: {G_sub_A:.3e}")          #Factor Magnético de Área
+        print (f"El factor  Magnético de Longitud es: {G_sub_L:.3e}")          #Factor Magnético de Longitud
         print(f"El factor de amortiguamiento es de: {Zeta:.3e}")             #Factor de Amortiguamiento
         print(f"La frecuencia natural es de: {omega_sub_n_f:.3e} Hz")        #Frecuencia Natural 
         print(f"La inercia eléctrica es de: {alpha:.3e} ")                   #Inercia Eléctrica
