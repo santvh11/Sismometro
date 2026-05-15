@@ -100,7 +100,7 @@ class SectionParams:
     R_sub_e: float = 9.5*(1e-3)                #Radio de la Esfera
     L_cilindro: float = 10*(1e-3)              #Longitud cilindro
     L_libre_iman: float = 135*(1e-3)           #Longitud libre del imán a usar
-    omega_Hz: float = 5                      #Frecuencia de vibración de la mesa (Radianes)
+    omega_Hz: float = 75                      #Frecuencia de vibración de la mesa (Radianes)
     omega= omega_Hz *2*np.pi                   #Paso a radianes (Radianes)
 
     e_sub_p:  float =  3*(1e-3)                     #Grosor del Contenedor de PLA
@@ -109,7 +109,7 @@ class SectionParams:
     h_sub_f:  float =  34*(1e-3)                      #altura del fluido
     g_sub_ecs: float = 0.015*(1e-3)                   #Grosor de la capa de esmalte
     e_sub_cs: float = 0.118*(1e-3)                     #Grosor del Cable del solenoide (diámetro) #Usamos un AGW 38 como estimación
-    N_sub_c_total:float= 2000                            #Vueltas totales de cable a través del solenoide
+    N_sub_c_total:float= 2000000                            #Vueltas totales de cable a través del solenoide
 
 
     #Fluidos
@@ -319,7 +319,7 @@ class SectionParams:
 #--------------------------------------------------------------------------------------------------
         fuerza=int(input("¿La fuerza es directa (1) o se calcula a partir de un MAS (2)?"))
         if fuerza==1:
-            self.F_0 = 1                              #Fuerza en Newtons de la mesa
+            self.F_0 = 5                              #Fuerza en Newtons de la mesa
         elif fuerza==2:
             amplitud=int(input("¿La amplitud es directa (1) o se calcula en base a la frecuencia(2)?"))
             if  amplitud==1:   
