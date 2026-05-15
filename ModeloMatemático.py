@@ -69,13 +69,17 @@ class SectionParams:
     #Constantes de las EDO´s
     # -------------------------------------------------------------------
     # -------------------------------------------------------------------
+    #Todas las unidades están en el SI
     R: float = 383.1                                      #Resistencia Real (Ohms)
     L: float = 36.7*(1e-6)                                #Inductancia Real (H)
     C: float = 0.07*(1e-6)                                #Capacitancia Real (F)
     c= 0.43                                               #Coeficiente de Amortiguamiento (Kg/s)
-    m: float = 1.5*(1e-3)                                 #Masa del sistema
+    m: float = 1.5*(1e-3)                                 #Masa del sistema masa-resorte amortiguador
     k: float =  300                                       #Constante Elástica del Resorte (kg/s^2)
-    m_mag: float= 0.05                                  #Escalar del momento magnético (Teslas)
+    m_mag: float= 0.05                                    #Escalar del momento magnético (Teslas)
+    m_sis: float = 48.6 *(1e-3)                           #Masa completa del sismometro
+    m_mes: float = 3.148*(1e-3)                           #Masa de la parte que vibra de la mesa
+
     # -------------------------------------------------------------------
     # -------------------------------------------------------------------
 
@@ -109,7 +113,7 @@ class SectionParams:
     h_sub_f:  float =  34*(1e-3)                      #altura del fluido
     g_sub_ecs: float = 0.015*(1e-3)                   #Grosor de la capa de esmalte
     e_sub_cs: float = 0.118*(1e-3)                     #Grosor del Cable del solenoide (diámetro) #Usamos un AGW 38 como estimación
-    N_sub_c_total:float= 2000000                            #Vueltas totales de cable a través del solenoide
+    N_sub_c_total:float= 2000                            #Vueltas totales de cable a través del solenoide
 
 
     #Fluidos
@@ -322,15 +326,19 @@ class SectionParams:
             self.F_0 = 5                              #Fuerza en Newtons de la mesa
         elif fuerza==2:
             amplitud=int(input("¿La amplitud es directa (1) o se calcula en base a la frecuencia(2)?"))
+            m_vibrante=(self.m_sis+self.self.m_mes)             #Masa vibrante
             if  amplitud==1:   
-                self.Y_0= 7*(1e-3)                    #Amplitud de vibración en metros
-                self.F_0 = self.m*self.Y_0*(self.omega**2) #Amplitud derivada de un MAS 
+                self.Y_0= 7*(1e-3)                              #Amplitud de vibración en metros
+                self.F_0 =  m_vibrante*self.Y_0*(self.omega**2) #Fuerza derivada de un MAS 
             elif amplitud==2:
                 #COMPLEMENTAR
                 """""
                 self.F_0 =self.F_0 
                 #Función de la amplitud en base a frecuencia (Hz)
                 """
+
+                f_Y= self.omega_Hz                             #función de la amplitud en base a la frecuencia
+                self.F_0 =  m_vibrante*f_Y*(self.omega**2)      #Fuerza derivada de un MAS
             else: 
                 ValueError("No se ingresó una opción válida, oprima (1) o (2)")
         else:
