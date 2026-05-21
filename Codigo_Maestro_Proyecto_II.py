@@ -338,11 +338,15 @@ class SectionParams:
                 self.F_0 =  m_vibrante*self.Y_0*(self.omega**2) #Fuerza derivada de un MAS 
             elif amplitud==2:
                 #COMPLEMENTAR
-                """""
-                if (self.omega<)
-                self.Y_0= 0.0284*1.067/((self.omega**2-64.92)**2+1.067)
+ 
+                if (26<self.omega_Hz<30):
+                    self.Y_0= np.abs(0.035*2.087/((self.omega_Hz-28.45)**2+2.087))
+                elif (8<self.omega_Hz<12):
+                    self.Y_0= np.abs(0.0284*0.026/((self.omega_Hz-10.33)**2+0.026))
+                else: 
+                    self.Y_0= np.abs(2.1*1e-5*self.omega_Hz**2)
                 #Función de la amplitud en base a frecuencia (Hz)
-                """
+                self.F_0 =  m_vibrante*self.Y_0*(self.omega**2) #Fuerza derivada de un MAS 
 
                 f_Y= self.omega_Hz                             #función de la amplitud en base a la frecuencia
                 self.F_0 =  m_vibrante*f_Y*(self.omega**2)      #Fuerza derivada de un MAS
