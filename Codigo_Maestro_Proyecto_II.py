@@ -340,16 +340,17 @@ class SectionParams:
                 #COMPLEMENTAR
  
                 if (26<self.omega_Hz<30):
-                    self.Y_0= np.abs(0.035*2.087/((self.omega_Hz-28.45)**2+2.087))
+                    aceleracion_G= np.abs(3.5*2.087/((self.omega_Hz-28.45)**2+2.087))
                 elif (8<self.omega_Hz<12):
-                    self.Y_0= np.abs(0.0284*0.026/((self.omega_Hz-10.33)**2+0.026))
+                    aceleracion_G= np.abs(2.84*0.026/((self.omega_Hz-10.33)**2+0.026))
                 else: 
-                    self.Y_0= np.abs(2.1*1e-5*self.omega_Hz**2)
-                #Función de la amplitud en base a frecuencia (Hz)
-                self.F_0 =  m_vibrante*self.Y_0*(self.omega**2) #Fuerza derivada de un MAS 
+                    aceleracion_G= np.abs(2.1*1e-3*self.omega_Hz**2)
 
-                f_Y= self.omega_Hz                             #función de la amplitud en base a la frecuencia
-                self.F_0 =  m_vibrante*f_Y*(self.omega**2)      #Fuerza derivada de un MAS
+                #Definir la aceleración G 
+
+                aceleracion= aceleracion_G*9.81
+                #Función de la amplitud en base a frecuencia (Hz)
+                self.F_0 =  m_vibrante*aceleracion #Fuerza derivada de un MAS 
             else: 
                 ValueError("No se ingresó una opción válida, oprima (1) o (2)")
         else:
@@ -686,6 +687,12 @@ def Solver (modelo_mk1:bool, modelo_mk2:bool, params:SectionParams)-> float:
             plt.figure(figsize=(8,6), dpi=200)
             plt.step(t_filtro, FEM_Ohm, where='post', label='Muestreo (Escalonado) con base al tiempo de recolección de datos', color="purple", linewidth=1)
             plt.title("FEM teórica producida por Ley de Ohm Fasorial")
+            # Anotación del valor pico estacionario
+            ax.text(0.95, 0.02, f"Pico Estac: {np.abs(FEM_Ohm)}", transform=ax.transAxes, 
+                        ha='right', fontsize=9, bbox=dict(facecolor='white', alpha=0.7))
+            # Anotar valores máximos 
+            ax.text(0, 0.02,f"Máx: {np.max(FEM_Ohm)}",transform=ax.transAxes, 
+                        ha='left', fontsize=7, bbox=dict(facecolor='white', alpha=0.7))
             plt.xlabel("Tiempo")
             plt.ylabel("FEM")
             plt.legend() 
@@ -695,6 +702,12 @@ def Solver (modelo_mk1:bool, modelo_mk2:bool, params:SectionParams)-> float:
             plt.figure(figsize=(8,6), dpi=200)
             plt.step(t_filtro, FEM_FL, where='post', label='Muestreo (Escalonado) con base al tiempo de recolección de datos', color="purple", linewidth=1)
             plt.title("FEM teórica producida por Faraday_Lenz")
+            # Anotación del valor pico estacionario
+            ax.text(0.95, 0.02, f"Pico Estac: {np.abs(FEM_FL)}", transform=ax.transAxes, 
+                        ha='right', fontsize=9, bbox=dict(facecolor='white', alpha=0.7))
+            # Anotar valores máximos 
+            ax.text(0, 0.02,f"Máx: {np.max(FEM_FL)}",transform=ax.transAxes, 
+                        ha='left', fontsize=7, bbox=dict(facecolor='white', alpha=0.7))
             plt.xlabel("Tiempo")
             plt.ylabel("FEM")
             plt.legend() 
