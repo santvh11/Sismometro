@@ -1,45 +1,73 @@
-import requests
+import serial
 import matplotlib.pyplot as plt
-import pandas as pd
+import matplotlib.animation as animation
+from collections import deque
 
-# --- Configuración ---
-CHANNEL_ID = 3343167
-READ_API_KEY = "9AQFLP8BXGIXVMRS" 
-RESULTS = 20 
+# ==========================================
+# CONFIGURACIÓN PRINCIPAL
+# ==========================================
+PUERTO = 'COM3'       # El puerto que me mostraste en la imagen
+BAUDIOS = 115200      # La velocidad (debe ser igual a Serial.begin en Arduino)
+MAX_PUNTOS = 200      # Cuántos puntos de la onda queremos ver en pantalla al mismo tiempo
 
-url = f'https://api.thingspeak.com/channels/{CHANNEL_ID}/feeds.json?api_key={READ_API_KEY}&results={RESULTS}'
+# ==========================================
+# PREPARANDO LAS HERRAMIENTAS
+# ==========================================
+# 1. Conectamos con el ESP32 por el cable USB
+try:
+    esp32 = serial.Serial(PUERTO, BAUDIOS)
+    print(f"Conectado exitosamente al puerto {PUERTO}")
+except Exception as e:
+    print(f"¡Error! No se pudo conectar al {PUERTO}. Verifica que no esté abierto en otro lado.")
+    exit()
 
-def graficar_datos():
-    response = requests.get(url)
-    data = response.json()
-    
-    # Extraer datos a un DataFrame de Pandas
-    feeds = data['feeds']
-    df = pd.DataFrame(feeds)
-    
-    # Convertir a valores numéricos
-    df['field1'] = pd.to_numeric(df['field1']) # Voltaje
-    df['field2'] = pd.to_numeric(df['field2']) # Frecuencia FFT
-    df['created_at'] = pd.to_datetime(df['created_at'])
+# 2. Creamos una "lista mágica" (deque) que guarda solo los últimos 200 datos.
+# Si entra el dato 201, el dato 1 se borra automáticamente (como una cinta de correr).
+datos_voltaje = deque([0.0] * MAX_PUNTOS, maxlen=MAX_PUNTOS)
 
-    # Crear Gráfica Doble
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
+# 3. Preparamos el lienzo de la gráfica
+fig, ax = plt.subplots(figsize=(10, 5))
+linea, = ax.plot(datos_voltaje, color='blue') # Dibujamos la línea inicial
+ax.set_ylim(-0.5, 0.5) # Rango del eje Y (De 0V a 3.5V, ya que tu ESP32 lee hasta 3.3V)
+ax.set_title("Onda del Sismómetro en Tiempo Real")
+ax.set_ylabel("Voltaje (V)")
+ax.set_xlabel("Muestras recientes")
+ax.grid(True)
 
-    # 1. Gráfica de Muestreo (Histórico de voltaje)
-    ax1.plot(df['created_at'], df['field1'], color='blue', marker='o')
-    ax1.set_title('Monitoreo de Voltaje en el Tiempo (Directo)')
-    ax1.set_ylabel('Voltaje (V)')
-    ax1.grid(True)
+# ==========================================
+# EL MOTOR DE LA GRÁFICA (Esta función se repite sola)
+# ==========================================
+def actualizar_grafica(frame):
+    # Mientras haya datos esperando en el cable USB...
+    while esp32.in_waiting > 0:
+        try:
+            # Leemos la línea que envió el ESP32, le quitamos espacios y la convertimos a texto
+            linea_texto = esp32.readline().decode('utf-8').strip()
+            
+            # Convertimos ese texto a un número decimal (float)
+            voltaje = float(linea_texto)
+            
+            # Añadimos el nuevo voltaje a nuestra lista mágica
+            datos_voltaje.append(voltaje)
+            
+        except ValueError:
+            # A veces el cable manda basura o un texto incompleto, lo ignoramos y seguimos
+            pass 
 
-    # 2. Gráfica de Frecuencia (Pico de Fourier)
-    ax2.bar(df['created_at'].dt.strftime('%H:%M:%S'), df['field2'], color='red')
-    ax2.set_title('Picos de Frecuencia Detectados (FFT)')
-    ax2.set_ylabel('Frecuencia (Hz)')
-    ax2.set_xlabel('Hora de Medición')
-    ax2.grid(True)
+    # Le pasamos los datos actualizados a la línea del dibujo
+    linea.set_ydata(datos_voltaje)
+    return linea,
 
-    plt.tight_layout()
-    plt.show()
+# ==========================================
+# ¡ACCIÓN!
+# ==========================================
+# FuncAnimation es el director de orquesta. Llama a "actualizar_grafica" muy rápido.
+ani = animation.FuncAnimation(fig, actualizar_grafica, interval=20, blit=True)
 
-if __name__ == "__main__":
-    graficar_datos()
+# Mostramos la ventana
+plt.tight_layout()
+plt.show()
+
+# Cuando cierres la ventana, cerramos el puerto USB por educación
+esp32.close()
+print("Desconectado.")
