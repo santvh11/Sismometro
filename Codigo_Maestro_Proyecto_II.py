@@ -1093,15 +1093,18 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
         print("\n--- Entrando a Adquisición de Datos y Gemelo Digital ---")
 
         # ==========================================
-        # 1. FUNCIÓN MATEMÁTICA PARA INGENIERÍA INVERSA
+        # 4.3 FUNCIÓN MATEMÁTICA PARA INGENIERÍA INVERSA (CORREGIDA)
         # ==========================================
-        def modelo_gemelo_digital(t_datos, c_ajuste):
+        def modelo_gemelo_digital(t_datos, c_ajuste, fase_extra):
+            # Z_m = sqrt((k - m*w^2)^2 + (cw)^2)
             Z_m = np.sqrt((k - m * omega**2) ** 2 + (c_ajuste * omega) ** 2)
             V_amp = (F_0 * omega) / Z_m
             phi = np.arctan2((k - m * omega**2), (c_ajuste * omega))
 
-            velocidad_teorica = V_amp * np.cos(omega * t_datos - phi)
-            FEM_FL_teorica = G_sub_A * R_porcentaje * velocidad_teorica
+            velocidad_teorica = V_amp * np.cos(omega * t_datos - phi + fase_extra)
+            FEM_FL_teorica = (
+                G_sub_A * R_porcentaje * velocidad_teorica * factor_amplificacion
+            )
             return FEM_FL_teorica
 
         # ==========================================
@@ -1216,16 +1219,23 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
                 estado["contador_frames"] += 1
                 if estado["contador_frames"] % 10 == 0:
                     try:
+                        # p0=[0.43, 0.0] -> Valor inicial para 'c' y para 'fase_extra'
+                        # bounds -> Limitamos 'c' entre 0 y 10, y la fase entre -pi y pi
                         popt, pcov = curve_fit(
                             modelo_gemelo_digital,
                             t_arr,
                             v_filtrado,
-                            p0=[c_sub_lambda],
-                            bounds=(0, 10),
+                            p0=[0.43, 0.0],
+                            bounds=([0.0, -np.pi], [10.0, np.pi]),
                         )
-                        estado["c_estimado"] = popt[0]
-                    except:
-                        pass
+                        c_estimado = popt[0]
+                        fase_estimada = popt[
+                            1
+                        ]  # No necesitamos imprimirla, pero el algoritmo la usó
+                    except Exception as e:
+                        # Imprimimos el error real en consola para saber por qué falla en lugar de silenciarlo
+                        print(f"Error en ajuste de curva: {e}")
+                        c_estimado = 0.0
 
                 v_teorico = modelo_gemelo_digital(t_arr, estado["c_estimado"])
 
