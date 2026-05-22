@@ -400,7 +400,6 @@ class SectionParams:
                     m_vibrante * self.Y_0 * (self.omega**2)
                 )  # Fuerza derivada de un MAS
             elif amplitud == 2:
-                # COMPLEMENTAR
 
                 if 26 < self.omega_Hz < 30:
                     aceleracion_G = np.abs(
@@ -417,7 +416,9 @@ class SectionParams:
 
                 aceleracion = aceleracion_G * 9.81
                 # Función de la amplitud en base a frecuencia (Hz)
+
                 self.F_0 = m_vibrante * aceleracion  # Fuerza derivada de un MAS
+
             else:
                 ValueError("No se ingresó una opción válida, oprima (1) o (2)")
         else:
