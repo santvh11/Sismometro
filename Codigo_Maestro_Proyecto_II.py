@@ -1120,7 +1120,7 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
 
         estado = {
             "tiempo_inicial": None,
-            "c_estimado": c_sub_lambda,
+            "c_estimado": c,
             "contador_frames": 0,
         }
 
