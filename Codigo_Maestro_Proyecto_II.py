@@ -3,12 +3,11 @@ from dataclasses import dataclass, field
 import numpy as np
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
-from scipy.integrate import solve_ivp
+from scipy.integrate import solve_ivp, cumulative_trapezoid
 from scipy.signal import butter, filtfilt
 from scipy.optimize import curve_fit
 from scipy.fft import fft, fftfreq
 import collections
-from scipy.integrate import cumulative_trapezoid
 
 # ===================================================================
 # 0. CONSTANTES GLOBALES
@@ -197,17 +196,21 @@ class SectionParams:
         self.m = (self.R_sub_e**3) * np.pi * 1.3333 * self.densidad_neodimio
 
         # Amortiguamiento
-        c_sub_Stokes_iman = 6 * np.pi * self.eta * self.R_sub_e
+        # Cálculo de amortiguamiento con simplificación de Navier Stokes
+        c_sub_Stokes_iman = (
+            6 * np.pi * self.eta * self.R_sub_e
+        )  # Coeficiente c para una esfera
         c_sub_Stokes_resorte = np.abs(
             4
             * np.pi
             * self.eta
             * self.L_cilindro
             / (np.log(self.L_cilindro / 2 * self.R_sub_e) + 0.5)
-        )
-        lambda_c = self.R_sub_e / self.r_sub_p
+        )  # Coeficiente c para un cilindro (resorte recreado)
+        lambda_c = self.R_sub_e / self.r_sub_p  # Factor de lejanía (Habermann Faxen)
 
         if lambda_c > 0.6:
+            # Factor de corrección de cercanía (Haberman/Sayre)
             den = 1 - (0.75857 * lambda_c**5)
             num = (
                 1
@@ -217,6 +220,7 @@ class SectionParams:
             )
             self.c_sub_lambda = num / den
         else:
+            # Factor de corrección de cercanía (Haberman/Faxen)
             self.c_sub_lambda = (
                 1 - (2.104 * lambda_c) + (2.089 * lambda_c**3) - 0.948 * lambda_c**5
             )
@@ -502,186 +506,155 @@ def simular_mk2(params: SectionParams, G_sub_L: float, G_sub_A: float):
 
 
 def iniciar_daq_tiempo_real(params: SectionParams, G_sub_A: float):
-    print("\n--- Entrando a Adquisición de Datos y Gemelo Digital ---")
+    print("--- Iniciando DAQ en Tiempo Real ---")
 
-    # ==========================================
-    # 1. FUNCIÓN MATEMÁTICA PARA INGENIERÍA INVERSA
-    # ==========================================
+    # Desempaquetado de parámetros físicos para mayor claridad
+    k = params.k
+    m = params.m
+    omega = params.omega
+    F_0 = params.F_0
+    R_porcentaje = params.R_porcentaje
+    factor_amplificacion = params.factor_amplificacion
+
+    TAMANO_VENTANA = 512  # Muestras para la FFT y el ajuste de curva
+    FS = 1000.0  # Frecuencia de muestreo teórica en Hz
+    FC_PASA_ALTAS = 0.5  # Elimina el DC y hace el "espejo" AC
+    FC_PASA_BAJAS = 40.0  # Limpia el ruido eléctrico agudo
+
+    buffer_t = collections.deque(maxlen=TAMANO_VENTANA)
+    buffer_v = collections.deque(maxlen=TAMANO_VENTANA)
+
+    def aplicar_filtros(tiempo, voltaje):
+        # Diseño de filtros Butterworth
+        nyquist = 0.5 * FS
+        b_altas, a_altas = butter(2, FC_PASA_ALTAS / nyquist, btype="high")
+        b_bajas, a_bajas = butter(2, FC_PASA_BAJAS / nyquist, btype="low")
+
+        # Aplicar filtros secuencialmente (filtfilt evita el desfase temporal)
+        v_filtrado = filtfilt(b_altas, a_altas, voltaje)
+        return filtfilt(b_bajas, a_bajas, v_filtrado)
+
     def modelo_gemelo_digital(t_datos, c_ajuste):
+        # Z_m = sqrt((k - m*w^2)^2 + (cw)^2)
         Z_m = np.sqrt((k - m * omega**2) ** 2 + (c_ajuste * omega) ** 2)
         V_amp = (F_0 * omega) / Z_m
         phi = np.arctan2((k - m * omega**2), (c_ajuste * omega))
 
         velocidad_teorica = V_amp * np.cos(omega * t_datos - phi)
-        FEM_FL_teorica = G_sub_A * R_porcentaje * velocidad_teorica
+        FEM_FL_teorica = (
+            G_sub_A * R_porcentaje * velocidad_teorica * factor_amplificacion
+        )
         return FEM_FL_teorica
 
-    # ==========================================
-    # 2. CONFIGURACIÓN DEL SISTEMA DAQ
-    # ==========================================
-    PUERTO = "COM3"
-    BAUDIOS = 115200
-    TAMANO_VENTANA = 512
-    FS = 1000.0
-
-    FC_PASA_ALTAS = 0.5
-    FC_PASA_BAJAS = 40.0
-
-    buffer_t = collections.deque(maxlen=TAMANO_VENTANA)
-    buffer_v = collections.deque(maxlen=TAMANO_VENTANA)
-
-    estado = {"tiempo_inicial": None, "c_estimado": c_sub_lambda, "contador_frames": 0}
-
     try:
-        esp32 = serial.Serial(PUERTO, BAUDIOS)
-        print(f"Conectado exitosamente a {PUERTO}. Recibiendo datos...")
+        esp32 = serial.Serial(PUERTO_SERIAL, BAUDIOS)
+        print(f"Conectado a {PUERTO_SERIAL}. Esperando sincronización...")
     except Exception as e:
-        print(f"Error crítico al conectar con el ESP32 en el puerto {PUERTO}: {e}")
+        print(f"Error conectando a {PUERTO_SERIAL}: {e}")
         return
 
-    # CREACIÓN DE LOS 3 PLOTS (Ajuste de tamaño a 12x9 para dar espacio)
-    fig, (ax_tiempo, ax_fft, ax_pos) = plt.subplots(3, 1, figsize=(12, 9))
-    fig.canvas.manager.set_window_title("DAQ Sismómetro - Gemelo Digital EAFIT")
+    fig, (ax_tiempo, ax_pos, ax_fft) = plt.subplots(3, 1, figsize=(10, 9))
+    fig.canvas.manager.set_window_title("DAQ Sismómetro EAFIT")
 
-    # Plot 1: Voltaje
-    (linea_t,) = ax_tiempo.plot(
-        [], [], lw=1.5, color="purple", label="Voltaje Real (DAQ)"
-    )
-    (linea_teorica,) = ax_tiempo.plot(
-        [], [], lw=1.5, color="red", linestyle="--", label="Voltaje Teórico"
-    )
-    ax_tiempo.set_title("Dominio del Tiempo (Señal Acoplada en AC)")
-    ax_tiempo.set_ylabel("Voltaje (V)")
+    (linea_t,) = ax_tiempo.plot([], [], lw=2, color="blue", label="Voltaje Filtrado")
+    ax_tiempo.set_title("Dominio del Tiempo (Voltaje y Filtros)")
+    ax_tiempo.set_ylabel("Voltaje [V]")
+    ax_tiempo.set_xlabel("Tiempo [s]")
     ax_tiempo.grid(True)
-    ax_tiempo.legend(loc="upper right")
     texto_metricas = ax_tiempo.text(
         0.02,
-        0.75,
+        0.85,
         "",
         transform=ax_tiempo.transAxes,
-        bbox=dict(facecolor="white", alpha=0.8, edgecolor="black"),
+        bbox=dict(facecolor="white", alpha=0.8),
     )
 
-    # Plot 2: FFT
-    (linea_f,) = ax_fft.plot([], [], lw=1.5, color="blue")
+    (linea_pos,) = ax_pos.plot([], [], lw=2, color="green", label="Posición Estimada")
+    ax_pos.set_title("Dominio del Tiempo (Posición)")
+    ax_pos.set_ylabel("Posición [m]")
+    ax_pos.set_xlabel("Tiempo [s]")
+    ax_pos.grid(True)
+
+    (linea_f,) = ax_fft.plot([], [], lw=2, color="red")
     ax_fft.set_title("Dominio de la Frecuencia (FFT)")
     ax_fft.set_ylabel("Amplitud")
-    ax_fft.set_xlabel("Frecuencia (Hz)")
-    ax_fft.set_xlim(0, 120)
+    ax_fft.set_xlabel("Frecuencia [Hz]")
+    ax_fft.set_xlim(0, 100)
     ax_fft.grid(True)
 
-    # Plot 3: Posición calculada (Nuevo)
-    (linea_pos,) = ax_pos.plot(
-        [], [], lw=1.5, color="darkgreen", label="Posición del Imán ($x(t)$)"
-    )
-    ax_pos.set_title(
-        "Posición Estimada del Imán (Integración Numérica de Faraday-Lenz)"
-    )
-    ax_pos.set_ylabel("Desplazamiento (m)")
-    ax_pos.set_xlabel("Tiempo (s)")
-    ax_pos.grid(True)
-    ax_pos.legend(loc="upper right")
-
     plt.tight_layout()
+    tiempo_inicial_micros = None
 
-    def aplicar_filtros(tiempo, voltaje):
-        nyquist = 0.5 * FS
-        b_altas, a_altas = butter(2, FC_PASA_ALTAS / nyquist, btype="high")
-        b_bajas, a_bajas = butter(2, FC_PASA_BAJAS / nyquist, btype="low")
-        v_filt = filtfilt(b_altas, a_altas, voltaje)
-        v_filt = filtfilt(b_bajas, a_bajas, v_filt)
-        return v_filt
-
-    # ==========================================
-    # 3. MOTOR DE ANIMACIÓN Y PROCESAMIENTO
-    # ==========================================
     def actualizar(frame):
+        nonlocal tiempo_inicial_micros
         while esp32.in_waiting > 0:
             try:
-                linea = esp32.readline().decode("utf-8", errors="ignore").strip()
+                linea = esp32.readline().decode("utf-8").strip()
                 if "," in linea:
                     t_micros_str, v_str = linea.split(",")
                     t_micros = int(t_micros_str)
-                    v_crudo = float(v_str)
 
-                    if estado["tiempo_inicial"] is None:
-                        estado["tiempo_inicial"] = t_micros
+                    if tiempo_inicial_micros is None:
+                        tiempo_inicial_micros = t_micros
 
-                    t_segundos = (t_micros - estado["tiempo_inicial"]) / 1000000.0
-
-                    buffer_t.append(t_segundos)
-                    buffer_v.append(v_crudo)
-            except Exception as e:
-                print(f"Aviso de lectura: {e}")
+                    buffer_t.append((t_micros - tiempo_inicial_micros) / 1e6)
+                    buffer_v.append(float(v_str))
+            except Exception:
+                pass
 
         if len(buffer_t) == TAMANO_VENTANA:
             t_arr = np.array(buffer_t)
             v_arr = np.array(buffer_v)
 
+            # 1. Aplicar Filtros (Pasa-Altas y Pasa-Bajas)
             v_filtrado = aplicar_filtros(t_arr, v_arr)
 
-            # Desacoplamiento del curve_fit
-            estado["contador_frames"] += 1
-            if estado["contador_frames"] % 10 == 0:
-                try:
-                    popt, pcov = curve_fit(
-                        modelo_gemelo_digital,
-                        t_arr,
-                        v_filtrado,
-                        p0=[c_sub_lambda],
-                        bounds=(0, 10),
-                    )
-                    estado["c_estimado"] = popt[0]
-                except:
-                    pass
+            # 2. Ingeniería Inversa: Ajuste de curva con scipy.optimize
+            try:
+                # popt guardará el valor de 'c' que hace que el voltaje coincida con la FEM teórica
+                popt, _ = curve_fit(
+                    modelo_gemelo_digital, t_arr, v_filtrado, p0=[0.43], bounds=(0, 10)
+                )
+                c_estimado = popt[0]
+            except:
+                c_estimado = 0.0  # Si no logra converger
 
-            v_teorico = modelo_gemelo_digital(t_arr, estado["c_estimado"])
+            # Cálculo de posición por integración (v = V / (G_A * R_porcentaje * factor_amp))
+            velocidad = v_filtrado / (G_sub_A * R_porcentaje * factor_amplificacion)
+            posicion = cumulative_trapezoid(velocidad, t_arr, initial=0)
+            posicion = posicion - np.mean(
+                posicion
+            )  # Centrar para eliminar deriva de integración
 
-            # -----------------------------------------------------------
-            # COMPUTACIÓN DE LA POSICIÓN (FÍSICA DE INGENIERÍA INVERSA)
-            # -----------------------------------------------------------
-            # 1. Despejar velocidad: v(t) = - V(t) / (G_sub_A * R_porcentaje)
-            # Multiplicamos por menos el factor inverso tal como lo solicitaste
-            velocidad_real = -v_filtrado / (G_sub_A * R_porcentaje)
-
-            # 2. Integrar numéricamente con respecto al tiempo para obtener posición
-            posicion_iman = cumulative_trapezoid(velocidad_real, t_arr, initial=0)
-            # -----------------------------------------------------------
-
-            # Análisis de frecuencia (FFT)
-            N = TAMANO_VENTANA
-            T_muestreo = 1.0 / FS
+            # 3. Transformada Rápida de Fourier (FFT)
             yf = fft(v_filtrado)
-            xf = fftfreq(N, T_muestreo)[: N // 2]
-            amplitud_fft = 2.0 / N * np.abs(yf[0 : N // 2])
+            xf = fftfreq(TAMANO_VENTANA, 1.0 / FS)[: TAMANO_VENTANA // 2]
+            amplitud_fft = 2.0 / TAMANO_VENTANA * np.abs(yf[0 : TAMANO_VENTANA // 2])
 
-            # Renderizado de Gráfica 1: Voltaje
+            # 4. Actualizar Gráfica de Tiempo (Autoajustable)
             linea_t.set_data(t_arr, v_filtrado)
-            linea_teorica.set_data(t_arr, v_teorico)
             ax_tiempo.set_xlim(t_arr[0], t_arr[-1])
-            margen_v = max(np.abs(v_filtrado)) * 1.2 + 0.01
-            ax_tiempo.set_ylim(-margen_v, margen_v)
+            margen = max(np.abs(v_filtrado)) * 1.2 + 0.01
+            ax_tiempo.set_ylim(-margen, margen)
 
+            # Actualizar Gráfica de Posición
+            linea_pos.set_data(t_arr, posicion)
+            ax_pos.set_xlim(t_arr[0], t_arr[-1])
+            margen_pos = max(np.abs(posicion)) * 1.2 + 1e-6
+            ax_pos.set_ylim(-margen_pos, margen_pos)
+
+            # Calcular y mostrar métricas
             v_pico = np.max(np.abs(v_filtrado))
             v_rms = np.sqrt(np.mean(v_filtrado**2))
             texto_metricas.set_text(
-                f"Voltaje Pico: {v_pico:.3f} V\n"
-                f"Voltaje RMS: {v_rms:.3f} V\n"
-                f"c_Teorico (Stokes): {c_sub_lambda:.4f} N·s/m\n"
-                f"c_Estimado (Real): {estado['c_estimado']:.4f} N·s/m"
+                f"Pico: {v_pico:.3f} V\nRMS: {v_rms:.3f} V\nCoef 'c': {c_estimado:.3f}"
             )
 
-            # Renderizado de Gráfica 2: FFT
+            # 5. Actualizar Gráfica de Frecuencia
             linea_f.set_data(xf, amplitud_fft)
             ax_fft.set_ylim(0, max(amplitud_fft) * 1.2 + 0.01)
 
-            # Renderizado de Gráfica 3: Posición del Imán
-            linea_pos.set_data(t_arr, posicion_iman)
-            ax_pos.set_xlim(t_arr[0], t_arr[-1])
-            margen_p = max(np.abs(posicion_iman)) * 1.2 + 1e-7  # Evita colapso si es 0
-            ax_pos.set_ylim(-margen_p, margen_p)
-
-        return linea_t, linea_teorica, linea_f, linea_pos, texto_metricas
+        return linea_t, linea_pos, linea_f, texto_metricas
 
     ani = animation.FuncAnimation(fig, actualizar, interval=30, blit=False)
     plt.show()
