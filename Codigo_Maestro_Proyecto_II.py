@@ -1218,29 +1218,44 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
                 t_arr = np.array(buffer_t)
                 v_arr = np.array(buffer_v)
 
+                # --- NUEVA LÍNEA: Restamos el primer elemento para que inicie en 0.0 ---
+                t_relativo = t_arr - t_arr[0]
+
                 v_filtrado = aplicar_filtros(t_arr, v_arr)
+
+                # Desacoplamiento del curve_fit
+                # Definimos un umbral para ignorar el ruido (Ajusta este 0.05 según el ruido base de tu placa)
+                UMBRAL_RUIDO = 0.05
+                v_pico_actual = np.max(np.abs(v_filtrado))
 
                 # Desacoplamiento del curve_fit
                 estado["contador_frames"] += 1
                 if estado["contador_frames"] % 10 == 0:
-                    try:
-                        # Usamos los valores previos como punto de partida para mayor estabilidad
-                        popt, pcov = curve_fit(
-                            modelo_gemelo_digital,
-                            t_arr,
-                            v_filtrado,
-                            p0=[estado["c_estimado"], estado["fase_estimada"]],
-                            bounds=([0.0, -np.pi], [10.0, np.pi]),
-                        )
-                        estado["c_estimado"] = popt[0]
-                        estado["fase_estimada"] = popt[1]
-                    except Exception as e:
-                        print(f"Error en ajuste de curva: {e}")
-                        # Al fallar, mantenemos el valor del frame anterior para evitar saltos gráficos violentos
+                    # SOLO intentamos estimar 'c' si hay movimiento real superando el ruido
+                    if v_pico_actual > UMBRAL_RUIDO:
+                        try:
+                            popt, pcov = curve_fit(
+                                modelo_gemelo_digital,
+                                t_relativo,
+                                v_filtrado,
+                                p0=[
+                                    max(estado["c_estimado"], 0.01),
+                                    estado["fase_estimada"],
+                                ],
+                                bounds=([0.0, -np.pi], [10.0, np.pi]),
+                            )
+                            estado["c_estimado"] = popt[0]
+                            estado["fase_estimada"] = popt[1]
+                        except Exception as e:
+                            pass  # Mantenemos el frame anterior si hay un fallo puntual durante la vibración
+                    else:
+                        # Si no hay movimiento, el amortiguamiento no se puede estimar. Forzamos a 0.
+                        estado["c_estimado"] = 0.0
+                        estado["fase_estimada"] = 0.0
 
-                # Generamos la onda teórica con los 3 parámetros correctos
+                # Generamos la onda teórica usando el tiempo relativo
                 v_teorico = modelo_gemelo_digital(
-                    t_arr, estado["c_estimado"], estado["fase_estimada"]
+                    t_relativo, estado["c_estimado"], estado["fase_estimada"]
                 )
 
                 # -----------------------------------------------------------
