@@ -1223,7 +1223,6 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
 
                 v_filtrado = aplicar_filtros(t_arr, v_arr)
 
-                # Desacoplamiento del curve_fit
                 # Definimos un umbral para ignorar el ruido (Ajusta este 0.05 según el ruido base de tu placa)
                 UMBRAL_RUIDO = 0.05
                 v_pico_actual = np.max(np.abs(v_filtrado))

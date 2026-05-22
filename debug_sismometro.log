@@ -1,0 +1,32 @@
+2026-05-22 08:37:55,826 - INFO - seleccionar_modelo - Esperando selección de modelo por el usuario
+2026-05-22 08:38:00,255 - INFO - seleccionar_modelo - Modelo seleccionado: mk_1
+2026-05-22 08:38:00,255 - INFO - __post_init__ - Ejecutando inicialización de SectionParams
+2026-05-22 08:38:03,588 - INFO - __post_init__ - Uso de parámetros teóricos: True
+2026-05-22 08:38:14,759 - ERROR - __post_init__ - Error durante __post_init__: Opción de fuerza no válida
+Traceback (most recent call last):
+  File "c:\Users\Usuario\Documents\Dev\Sismometro\Codigo_Maestro_Proyecto_II.py", line 182, in __post_init__
+    self._configurar_fuerza()
+  File "c:\Users\Usuario\Documents\Dev\Sismometro\Codigo_Maestro_Proyecto_II.py", line 285, in _configurar_fuerza
+    raise ValueError("Opción de fuerza no válida")
+ValueError: Opción de fuerza no válida
+2026-05-22 08:38:14,761 - CRITICAL - <module> - El programa finalizó debido a una excepción crítica.
+Traceback (most recent call last):
+  File "c:\Users\Usuario\Documents\Dev\Sismometro\Codigo_Maestro_Proyecto_II.py", line 714, in <module>
+    main()
+  File "c:\Users\Usuario\Documents\Dev\Sismometro\Codigo_Maestro_Proyecto_II.py", line 697, in main
+    parametros = SectionParams()
+                 ^^^^^^^^^^^^^^^
+  File "<string>", line 54, in __init__
+  File "c:\Users\Usuario\Documents\Dev\Sismometro\Codigo_Maestro_Proyecto_II.py", line 182, in __post_init__
+    self._configurar_fuerza()
+  File "c:\Users\Usuario\Documents\Dev\Sismometro\Codigo_Maestro_Proyecto_II.py", line 285, in _configurar_fuerza
+    raise ValueError("Opción de fuerza no válida")
+ValueError: Opción de fuerza no válida
+2026-05-22 08:38:43,349 - INFO - seleccionar_modelo - Esperando selección de modelo por el usuario
+2026-05-22 08:38:44,993 - INFO - seleccionar_modelo - Modelo seleccionado: mk_1
+2026-05-22 08:38:44,994 - INFO - __post_init__ - Ejecutando inicialización de SectionParams
+2026-05-22 08:38:45,823 - INFO - __post_init__ - Uso de parámetros teóricos: False
+2026-05-22 08:38:48,657 - INFO - calcular_factores_acople - Calculando factores de acople
+2026-05-22 08:38:48,657 - INFO - simular_mk1 - --- Ejecutando Modelo MK1 (Lineal) ---
+2026-05-22 08:38:48,673 - INFO - simular_mk1 - Frecuencias naturales del sistema acoplado: [  1031.53730824 118927.00259931] Hz
+2026-05-22 08:38:56,037 - WARNING - simular_mk1 - Constante no lineal (Requiere RK45). Reynolds: 9.202e+05
