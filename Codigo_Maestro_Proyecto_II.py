@@ -1121,9 +1121,11 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
         buffer_t = collections.deque(maxlen=TAMANO_VENTANA)
         buffer_v = collections.deque(maxlen=TAMANO_VENTANA)
 
+        # Se añade la fase al diccionario para usar datos del fotograma anterior
         estado = {
             "tiempo_inicial": None,
             "c_estimado": c,
+            "fase_estimada": 0.0,
             "contador_frames": 0,
         }
 
@@ -1134,7 +1136,7 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
             print(f"Error crítico al conectar con el ESP32 en el puerto {PUERTO}: {e}")
             return
 
-        # CREACIÓN DE LOS 3 PLOTS (Ajuste de tamaño a 12x9 para dar espacio)
+        # CREACIÓN DE LOS 3 PLOTS
         fig, (ax_tiempo, ax_fft, ax_pos) = plt.subplots(3, 1, figsize=(12, 9))
         fig.canvas.manager.set_window_title("DAQ Sismómetro - Gemelo Digital EAFIT")
 
@@ -1165,7 +1167,7 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
         ax_fft.set_xlim(0, 120)
         ax_fft.grid(True)
 
-        # Plot 3: Posición calculada (Nuevo)
+        # Plot 3: Posición calculada
         (linea_pos,) = ax_pos.plot(
             [], [], lw=1.5, color="darkgreen", label="Posición del Imán ($x(t)$)"
         )
@@ -1178,6 +1180,9 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
         ax_pos.legend(loc="upper right")
 
         plt.tight_layout()
+
+        # Importación necesaria para integrar la velocidad a posición
+        from scipy.integrate import cumulative_trapezoid
 
         def aplicar_filtros(tiempo, voltaje):
             nyquist = 0.5 * FS
@@ -1219,34 +1224,34 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
                 estado["contador_frames"] += 1
                 if estado["contador_frames"] % 10 == 0:
                     try:
-                        # p0=[0.43, 0.0] -> Valor inicial para 'c' y para 'fase_extra'
-                        # bounds -> Limitamos 'c' entre 0 y 10, y la fase entre -pi y pi
+                        # Usamos los valores previos como punto de partida para mayor estabilidad
                         popt, pcov = curve_fit(
                             modelo_gemelo_digital,
                             t_arr,
                             v_filtrado,
-                            p0=[0.43, 0.0],
+                            p0=[estado["c_estimado"], estado["fase_estimada"]],
                             bounds=([0.0, -np.pi], [10.0, np.pi]),
                         )
-                        c_estimado = popt[0]
-                        fase_estimada = popt[
-                            1
-                        ]  # No necesitamos imprimirla, pero el algoritmo la usó
+                        estado["c_estimado"] = popt[0]
+                        estado["fase_estimada"] = popt[1]
                     except Exception as e:
-                        # Imprimimos el error real en consola para saber por qué falla en lugar de silenciarlo
                         print(f"Error en ajuste de curva: {e}")
-                        c_estimado = 0.0
+                        # Al fallar, mantenemos el valor del frame anterior para evitar saltos gráficos violentos
 
-                v_teorico = modelo_gemelo_digital(t_arr, estado["c_estimado"])
+                # Generamos la onda teórica con los 3 parámetros correctos
+                v_teorico = modelo_gemelo_digital(
+                    t_arr, estado["c_estimado"], estado["fase_estimada"]
+                )
 
                 # -----------------------------------------------------------
                 # COMPUTACIÓN DE LA POSICIÓN (FÍSICA DE INGENIERÍA INVERSA)
                 # -----------------------------------------------------------
-                # 1. Despejar velocidad: v(t) = - V(t) / (G_sub_A * R_porcentaje)
-                # Multiplicamos por menos el factor inverso tal como lo solicitaste
-                velocidad_real = -v_filtrado / (G_sub_A * R_porcentaje)
+                # Despejar velocidad: Se añade la división por factor_amplificacion
+                velocidad_real = -v_filtrado / (
+                    G_sub_A * R_porcentaje * factor_amplificacion
+                )
 
-                # 2. Integrar numéricamente con respecto al tiempo para obtener posición
+                # Integrar numéricamente con respecto al tiempo para obtener posición
                 posicion_iman = cumulative_trapezoid(velocidad_real, t_arr, initial=0)
                 # -----------------------------------------------------------
 
@@ -1266,10 +1271,12 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
 
                 v_pico = np.max(np.abs(v_filtrado))
                 v_rms = np.sqrt(np.mean(v_filtrado**2))
+
+                # Se actualiza el texto para mostrar 'c' directo de Stokes
                 texto_metricas.set_text(
                     f"Voltaje Pico: {v_pico:.3f} V\n"
                     f"Voltaje RMS: {v_rms:.3f} V\n"
-                    f"c_Teorico (Stokes): {c_sub_lambda:.4f} N·s/m\n"
+                    f"c_Teorico (Stokes): {c:.4f} N·s/m\n"
                     f"c_Estimado (Real): {estado['c_estimado']:.4f} N·s/m"
                 )
 
@@ -1280,9 +1287,7 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
                 # Renderizado de Gráfica 3: Posición del Imán
                 linea_pos.set_data(t_arr, posicion_iman)
                 ax_pos.set_xlim(t_arr[0], t_arr[-1])
-                margen_p = (
-                    max(np.abs(posicion_iman)) * 1.2 + 1e-7
-                )  # Evita colapso si es 0
+                margen_p = max(np.abs(posicion_iman)) * 1.2 + 1e-7
                 ax_pos.set_ylim(-margen_p, margen_p)
 
             return linea_t, linea_teorica, linea_f, linea_pos, texto_metricas
