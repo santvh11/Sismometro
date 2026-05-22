@@ -11,6 +11,9 @@ from scipy.signal import butter, filtfilt
 from scipy.optimize import curve_fit
 from scipy.fft import fft, fftfreq  # Librería de la transformada rápida de fourier
 import collections
+from scipy.integrate import (
+    cumulative_trapezoid,
+)  # Integrar numéricamente el voltaje para obtener posición
 
 # -------------------------------------------------------------------
 # 0. Selección del modelo:
@@ -1083,6 +1086,7 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
             print("Error en el solver:", solver.message)
         else:
             print("Integración exitosa del solver.")
+
     if modelo_mk2 == False and simular == True:
 
         print("\n--- Entrando a Adquisición de Datos y Gemelo Digital ---")
@@ -1091,7 +1095,6 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
         # 1. FUNCIÓN MATEMÁTICA PARA INGENIERÍA INVERSA
         # ==========================================
         def modelo_gemelo_digital(t_datos, c_ajuste):
-            # Utiliza los parámetros de la clase SectionParams que ya calculaste arriba
             Z_m = np.sqrt((k - m * omega**2) ** 2 + (c_ajuste * omega) ** 2)
             V_amp = (F_0 * omega) / Z_m
             phi = np.arctan2((k - m * omega**2), (c_ajuste * omega))
@@ -1114,14 +1117,12 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
         buffer_t = collections.deque(maxlen=TAMANO_VENTANA)
         buffer_v = collections.deque(maxlen=TAMANO_VENTANA)
 
-        # Diccionario de control para evitar colisiones de variables globales
         estado = {
             "tiempo_inicial": None,
-            "c_estimado": c_sub_lambda,  # Empezamos con tu valor teórico de Stokes
+            "c_estimado": c_sub_lambda,
             "contador_frames": 0,
         }
 
-        # Inicialización de la interfaz gráfica
         try:
             esp32 = serial.Serial(PUERTO, BAUDIOS)
             print(f"Conectado exitosamente a {PUERTO}. Recibiendo datos...")
@@ -1129,30 +1130,48 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
             print(f"Error crítico al conectar con el ESP32 en el puerto {PUERTO}: {e}")
             return
 
-        fig, (ax_tiempo, ax_fft) = plt.subplots(2, 1, figsize=(12, 8))
+        # CREACIÓN DE LOS 3 PLOTS (Ajuste de tamaño a 12x9 para dar espacio)
+        fig, (ax_tiempo, ax_fft, ax_pos) = plt.subplots(3, 1, figsize=(12, 9))
         fig.canvas.manager.set_window_title("DAQ Sismómetro - Gemelo Digital EAFIT")
 
+        # Plot 1: Voltaje
         (linea_t,) = ax_tiempo.plot(
-            [], [], lw=1.5, color="purple", label="Voltaje Filtrado"
+            [], [], lw=1.5, color="purple", label="Voltaje Real (DAQ)"
+        )
+        (linea_teorica,) = ax_tiempo.plot(
+            [], [], lw=1.5, color="red", linestyle="--", label="Voltaje Teórico"
         )
         ax_tiempo.set_title("Dominio del Tiempo (Señal Acoplada en AC)")
         ax_tiempo.set_ylabel("Voltaje (V)")
-        ax_tiempo.set_xlabel("Tiempo (s)")
         ax_tiempo.grid(True)
+        ax_tiempo.legend(loc="upper right")
         texto_metricas = ax_tiempo.text(
             0.02,
-            0.80,
+            0.75,
             "",
             transform=ax_tiempo.transAxes,
             bbox=dict(facecolor="white", alpha=0.8, edgecolor="black"),
         )
 
+        # Plot 2: FFT
         (linea_f,) = ax_fft.plot([], [], lw=1.5, color="blue")
         ax_fft.set_title("Dominio de la Frecuencia (FFT)")
         ax_fft.set_ylabel("Amplitud")
         ax_fft.set_xlabel("Frecuencia (Hz)")
         ax_fft.set_xlim(0, 120)
         ax_fft.grid(True)
+
+        # Plot 3: Posición calculada (Nuevo)
+        (linea_pos,) = ax_pos.plot(
+            [], [], lw=1.5, color="darkgreen", label="Posición del Imán ($x(t)$)"
+        )
+        ax_pos.set_title(
+            "Posición Estimada del Imán (Integración Numérica de Faraday-Lenz)"
+        )
+        ax_pos.set_ylabel("Desplazamiento (m)")
+        ax_pos.set_xlabel("Tiempo (s)")
+        ax_pos.grid(True)
+        ax_pos.legend(loc="upper right")
 
         plt.tight_layout()
 
@@ -1168,7 +1187,6 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
         # 3. MOTOR DE ANIMACIÓN Y PROCESAMIENTO
         # ==========================================
         def actualizar(frame):
-            # Lectura intensiva del puerto serie
             while esp32.in_waiting > 0:
                 try:
                     linea = esp32.readline().decode("utf-8", errors="ignore").strip()
@@ -1185,18 +1203,15 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
                         buffer_t.append(t_segundos)
                         buffer_v.append(v_crudo)
                 except Exception as e:
-                    # Si hay un error real de puerto o bache de datos, lo vemos en consola
                     print(f"Aviso de lectura: {e}")
 
-            # Procesamos el set de datos cuando el buffer esté completo
             if len(buffer_t) == TAMANO_VENTANA:
                 t_arr = np.array(buffer_t)
                 v_arr = np.array(buffer_v)
 
-                # Filtrado digital
                 v_filtrado = aplicar_filtros(t_arr, v_arr)
 
-                # Decoupling del cálculo numérico: ejecutamos el ajuste cada 10 frames
+                # Desacoplamiento del curve_fit
                 estado["contador_frames"] += 1
                 if estado["contador_frames"] % 10 == 0:
                     try:
@@ -1209,8 +1224,20 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
                         )
                         estado["c_estimado"] = popt[0]
                     except:
-                        # Si un cuadro falla por ruido transitorio, conserva el c anterior
                         pass
+
+                v_teorico = modelo_gemelo_digital(t_arr, estado["c_estimado"])
+
+                # -----------------------------------------------------------
+                # COMPUTACIÓN DE LA POSICIÓN (FÍSICA DE INGENIERÍA INVERSA)
+                # -----------------------------------------------------------
+                # 1. Despejar velocidad: v(t) = - V(t) / (G_sub_A * R_porcentaje)
+                # Multiplicamos por menos el factor inverso tal como lo solicitaste
+                velocidad_real = -v_filtrado / (G_sub_A * R_porcentaje)
+
+                # 2. Integrar numéricamente con respecto al tiempo para obtener posición
+                posicion_iman = cumulative_trapezoid(velocidad_real, t_arr, initial=0)
+                # -----------------------------------------------------------
 
                 # Análisis de frecuencia (FFT)
                 N = TAMANO_VENTANA
@@ -1219,15 +1246,13 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
                 xf = fftfreq(N, T_muestreo)[: N // 2]
                 amplitud_fft = 2.0 / N * np.abs(yf[0 : N // 2])
 
-                # Renderizado del Dominio del Tiempo
+                # Renderizado de Gráfica 1: Voltaje
                 linea_t.set_data(t_arr, v_filtrado)
-                ax_tiempo.set_xlim(
-                    t_arr[0], t_arr[-1]
-                )  # Desplazamiento temporal continuo
-                margen = max(np.abs(v_filtrado)) * 1.2 + 0.01
-                ax_tiempo.set_ylim(-margen, margen)
+                linea_teorica.set_data(t_arr, v_teorico)
+                ax_tiempo.set_xlim(t_arr[0], t_arr[-1])
+                margen_v = max(np.abs(v_filtrado)) * 1.2 + 0.01
+                ax_tiempo.set_ylim(-margen_v, margen_v)
 
-                # Métricas estadísticas en vivo
                 v_pico = np.max(np.abs(v_filtrado))
                 v_rms = np.sqrt(np.mean(v_filtrado**2))
                 texto_metricas.set_text(
@@ -1237,11 +1262,19 @@ def Solver(modelo_mk1: bool, modelo_mk2: bool, params: SectionParams) -> float:
                     f"c_Estimado (Real): {estado['c_estimado']:.4f} N·s/m"
                 )
 
-                # Renderizado de la FFT
+                # Renderizado de Gráfica 2: FFT
                 linea_f.set_data(xf, amplitud_fft)
                 ax_fft.set_ylim(0, max(amplitud_fft) * 1.2 + 0.01)
 
-            return linea_t, linea_f, texto_metricas
+                # Renderizado de Gráfica 3: Posición del Imán
+                linea_pos.set_data(t_arr, posicion_iman)
+                ax_pos.set_xlim(t_arr[0], t_arr[-1])
+                margen_p = (
+                    max(np.abs(posicion_iman)) * 1.2 + 1e-7
+                )  # Evita colapso si es 0
+                ax_pos.set_ylim(-margen_p, margen_p)
+
+            return linea_t, linea_teorica, linea_f, linea_pos, texto_metricas
 
         ani = animation.FuncAnimation(fig, actualizar, interval=30, blit=False)
         plt.show()
