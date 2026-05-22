@@ -464,16 +464,9 @@ def Factores_Acople (params:SectionParams)-> float:
     N_sub_cs_total=params.N_sub_c_total
     e_total=params.e_total
 
-    #Precomputamos los bloques de la integral 
-    bloque_raíz=((h_sub_p)**2+(e_total)**2)**0.5
-
 
     #Añadimos constantes físicas
     constantes_magneticas=(0.25*m_mag*mu_sub_cero)/np.pi
-
-    #Campo magnético para fuerza de Laplace
-    B_x=np.abs(((e_total-bloque_raíz)/(bloque_raíz*
-        (e_total**2)))*(3/2)*constantes_magneticas)
 
     #Componente de radio y paso
     
@@ -488,7 +481,7 @@ def Factores_Acople (params:SectionParams)-> float:
 
     #LxB_sub_x :Acople G_sub_L:
 
-    G_sub_L=B_x*L_sub_s
+    G_sub_L=(constantes_magneticas*Radio_total)/(Paso*(Radio_total**2+(4*np.pi*Paso)**2)**3)
 
     return G_sub_L, G_sub_A  
 
