@@ -731,7 +731,6 @@ def Solver (modelo_mk1:bool, modelo_mk2:bool, params:SectionParams)-> float:
         else: 
             print(f"La constante de amortiguamiento no es lineal, se necesita RK45. Valor de Reynolds:{Re:.3e}")
 
-        print("--- Entrando a Modelo MK1 (Lineal) ---")
 
     
     elif (modelo_mk_2==True):
@@ -750,7 +749,7 @@ def Solver (modelo_mk1:bool, modelo_mk2:bool, params:SectionParams)-> float:
             dz_dt=v
             dz_dt_2=(1/m)*((-k*z)-(c*v*np.abs(v))+(F_ext)+(I*G_sub_L))
             dQ_dt=I
-            dQ_dt_2=dI_dt = (1/L) * (-R * I - (1/C) * Q + v * G_sub_A)
+            dQ_dt_2= (1/L) * (-R * I - (1/C) * Q + v * G_sub_A)
             
             return dz_dt,dz_dt_2,dQ_dt,dQ_dt_2
 
