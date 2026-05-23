@@ -47,9 +47,9 @@ class SectionParams:
     R: float = 383.1
     L: float = 36.7 * (1e-3)
     C: float = 0.07 * (1e-6)
-    c: float = 0.43
-    m: float = 1.5 * (1e-3)
-    k: float = 300
+    c: float = 1.1
+    m: float = 11 * (1e-3)
+    k: float = 272
     m_mag: float = 13.93e-03
     m_sis: float = 48.6 * (1e-3)
     m_mes: float = 3.148 * (1e-3)
@@ -64,7 +64,7 @@ class SectionParams:
     R_sub_e: float = 9.5 * (1e-3)
     L_cilindro: float = 10 * (1e-3)
     L_libre_iman: float = 135 * (1e-3)
-    omega_Hz: float = 75
+    omega_Hz: float = 10
     omega = omega_Hz * 2 * np.pi
     e_sub_p: float = 3 * (1e-3)
     h_sub_p: float = 34 * (1e-3)
@@ -72,7 +72,7 @@ class SectionParams:
     h_sub_f: float = 34 * (1e-3)
     g_sub_ecs: float = 0.015 * (1e-3)
     e_sub_cs: float = 0.079 * (1e-3)
-    N_sub_c_total: float = 2700
+    N_sub_c_total: float = 3000
     rho_0: float = 1273.3
     beta_rho: float = 0.6121
     densidad_neodimio: float = 7500
@@ -489,15 +489,7 @@ def Solver(
             linewidth=1,
         )
         plt.title("FEM teórica producida por Ley de Ohm Fasorial")
-        plt.text(
-            0.95,
-            0.02,
-            f"Pico Estac: {np.max(np.abs(FEM_Ohm)):.2e}",
-            transform=plt.gca().transAxes,
-            ha="right",
-            fontsize=9,
-            bbox=dict(facecolor="white", alpha=0.7),
-        )
+
         plt.text(
             0,
             0.02,
