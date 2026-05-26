@@ -1,0 +1,523 @@
+\documentclass{beamer}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage[pages=all]{background}
+\usepackage{subfig}
+\usepackage{caption}   % Añadido para personalizar caption
+\usepackage{amsfonts}  % Para símbolos adicionales si se requieren
+
+% --- DEFINICIÓN DE COLORES ---
+\definecolor{VinoOscuro}{RGB}{103, 0, 0}
+
+% --- CONFIGURACIÓN DE TEXTO BLANCO (unificada) ---
+\setbeamercolor{normal text}{fg=white}
+\setbeamercolor{structure}{fg=white}
+\setbeamercolor{title}{fg=white}
+\setbeamercolor{author}{fg=white}
+\setbeamercolor{date}{fg=white}
+\setbeamercolor{item}{fg=white}
+\setbeamercolor{block title}{bg=VinoOscuro, fg=white}
+\setbeamercolor{block body}{bg=white!10, fg=white}
+
+\usetheme{Madrid}
+\usecolortheme[named=VinoOscuro]{structure}
+
+% --- CONFIGURACIÓN DE FONDO Y LOGO (corregida, sin duplicados) ---
+\backgroundsetup{
+    scale=1,
+    angle=0,
+    opacity=1,
+    contents={%
+        \begin{tikzpicture}[remember picture, overlay]
+            \node[opacity=0.15, inner sep=0pt] at (current page.center) {%
+                \includegraphics[width=\paperwidth, height=\paperheight]{Fondo_presentacion_final_sismometro.png}%
+            };
+            \node[anchor=north east, xshift=-0.5cm, yshift=-0.5cm, opacity=0.9] at (current page.north east) {%
+                \includegraphics[width=2.5cm, keepaspectratio]{Logo_Eafit.png}%
+            };
+        \end{tikzpicture}%
+    }
+}
+
+% --- INICIO DEL DOCUMENTO ---
+\begin{document}
+
+% Slide 1: Portada
+\begin{frame}
+    \transdissolve
+    \titlepage
+    \centering
+    \vspace{-0.5cm}
+    \footnotesize{SISTEMA DE DETECCIÓN DE VIBRACIONES ELECTROMECÁNICAS (SDVE)}
+\end{frame}
+
+% --- Slide 2: Variables Mecánicas - Masa y Resorte ---
+\begin{frame}{Variables Mecánicas: Masa y Resorte}
+    \transdissolve
+    \begin{columns}
+        \begin{column}{0.5\textwidth}
+            El comportamiento mecánico surge de la Segunda Ley de Newton [1, 2].
+            \begin{itemize}
+                \item \textbf{Masa ($m$):} Proviene del imán de Neodimio N35 ($11\,\text{g}$) que actúa como núcleo móvil [1, 3].
+                \item \textbf{Resorte ($k$):} Surge de la Ley de Hooke ($F=kx$) aplicada a los resortes que suspenden la masa [1, 4].
+                \item Valor estimado: $k \approx 49\,\text{kg/s}^2$ [5].
+            \end{itemize}
+        \end{column}
+        \begin{column}{0.5\textwidth}
+            \centering
+            \includegraphics[width=\textwidth]{Sistema_masa_resorte_amortiguador.jpg}
+            \captionof{figure}{\footnotesize \textit{Esta imagen ilustra la disposición física de la masa $m$ y el resorte $k$ en el eje $z$ [6].}}
+        \end{column}
+    \end{columns}
+\end{frame}
+
+% --- Slide 3: Variables Mecánicas - Amortiguamiento ---
+\begin{frame}{Variables Mecánicas: Amortiguamiento}
+    \transdissolve
+    La variable de amortiguamiento (\textbf{$c$}) surge de la interacción del imán con el aceite [7].
+    \begin{itemize}
+        \item \textbf{Ley de Stokes:} Base del amortiguamiento para la esfera ($c_e = 6\pi\eta r$) [7, 8].
+        \item \textbf{Factor Haberman-Faxen ($\beta$):} Corrección por la proximidad entre el imán y las paredes del cilindro [7, 9].
+        \item \textbf{Acople total:} $c = c_e \times c_\beta$ [7].
+    \end{itemize}
+    \centering
+    \includegraphics[width=0.4\textwidth]{Vista_completa_sismometro.png}
+    \captionof{figure}{\footnotesize \textit{Muestra el confinamiento del imán en el cilindro, justificando el uso de Haberman-Faxen [10].}}
+\end{frame}
+
+% --- Slide 4: Variables Eléctricas - Resistencia ---
+\begin{frame}{Variables Eléctricas: Resistencia}
+    \transdissolve
+    \begin{columns}
+        \begin{column}{0.4\textwidth}
+            \centering
+            \includegraphics[width=\textwidth]{Resistencia.jpg}
+            \captionof{figure}{\footnotesize \textit{Representa la longitud y sección del cable que determinan $R$ [11].}}
+        \end{column}
+        \begin{column}{0.6\textwidth}
+            La resistencia total (\textbf{$R$}) surge de [12]:
+            \begin{itemize}
+                \item \textbf{Resistencia del cable ($R_{cable}$):} Basada en la resistividad del cobre ($\rho$) y geometría ($R = \rho \frac{l}{A}$) [12, 13].
+                \item \textbf{Resistencia del chip ($R_{chip}$):} Impedancia de entrada del amplificador LM358 [12].
+                \item Se modela un factor de pérdidas para ajustar la FEM real [12].
+            \end{itemize}
+        \end{column}
+    \end{columns}
+\end{frame}
+
+% --- Slide 5: Variables Eléctricas - Inductancia ---
+\begin{frame}{Variables Eléctricas: Inductancia}
+    \transdissolve
+    La inductancia (\textbf{$L$}) es la oposición al cambio de corriente por el campo magnético generado [14].
+    \begin{itemize}
+        \item \textbf{Ley de Ampère:} Determina el campo magnético del solenoide ($B = \frac{\mu_0 I N}{h}$) [14, 15].
+        \item \textbf{Flujo Magnético ($\Phi$):} Integral de la densidad de flujo en la base del solenoide [14, 16].
+        \item \textbf{Geometría:} $L$ depende del número de vueltas ($N$) y capas [14, 17].
+    \end{itemize}
+    \centering
+    \includegraphics[width=0.45\textwidth]{Inductancia.jpg}
+    \captionof{figure}{\footnotesize \textit{Ilustra las líneas de campo del solenoide que dan origen a la inductancia [18].}}
+\end{frame}
+
+% --- Slide 6: Variables Eléctricas - Capacitancia Parásita ---
+\begin{frame}{Variables Eléctricas: Capacitancia Parásita}
+    \transdissolve
+    \begin{columns}
+        \begin{column}{0.6\textwidth}
+            Surge por la diferencia de potencial entre espiras adyacentes [19].
+            \begin{itemize}
+                \item \textbf{Efecto Hall:} Las distancias variables ($\vec{d}_1, \vec{d}_2$) generan diferenciales de voltaje [19, 20].
+                \item \textbf{Ley de Gauss:} Define la carga ($Q$) y campo ($E$) para la capacitancia por longitud [19, 21].
+                \item \textbf{Ensamblaje:} Vueltas en serie y capas en paralelo [19, 22].
+            \end{itemize}
+        \end{column}
+        \begin{column}{0.4\textwidth}
+            \centering
+            \includegraphics[width=\textwidth]{Capacitancia_diff_voltaje.jpg}
+            \captionof{figure}{\footnotesize \textit{Visualiza cómo las diferencias de distancia crean la capacitancia [23].}}
+        \end{column}
+    \end{columns}
+\end{frame}
+
+% --- Slide 7: El Corazón del Modelo (Acople) ---
+\begin{frame}{Integración de Variables: El Modelo Acoplado}
+    \transdissolve
+    \centering
+    \includegraphics[width=0.65\textwidth]{Acople_electromecanico.jpg}
+    \captionof{figure}{\footnotesize \textit{Esta imagen es el resumen del modelo, unificando las 6 variables ($m, k, c, R, L, C$) [24].}}
+    \begin{block}{Interacción Electromecánica}
+        Las variables dejan de estar aisladas para formar un sistema de EDOs donde la mecánica induce voltaje ($G_A$) y la eléctrica genera frenado mecánico ($G_L$) [25].
+    \end{block}
+\end{frame}
+
+% --- Slide 8: Factores de Acople ---
+\begin{frame}{Factores de Acople: $G_A$}
+    \transdissolve
+    \centering
+    \includegraphics[width=0.65\textwidth]{magnetico_campo.jpg}
+    \captionof{figure}{\footnotesize \textit{Visualización del Campo Magnético.}}
+
+    \begin{block}{Idea Base}
+        Partimos suponiendo que las líneas de campo atraviesan \textit{\textbf{"por la piel"}} del cable de solenoide. De allí, planteamos las regiones de integración con una parametrización de un solenoide con dos ángulos.
+    \end{block}
+    
+    \begin{block}{Definición de flujo}
+        Por la definición formal de flujo $\Phi = \int_{S} \vec{B} \cdot d\vec{S} =\int_{S} \vec{B} \cdot \vec{n} \;dS$. Se trata de resolver la integral, resultando en 3 integrales elípticas dobles, de resolución no analítica. 
+    \end{block}
+
+    \begin{block}{Teorema de Stokes y potencial vectorial}
+        Se recuerda el Teorema de Stokes, que relaciona el flujo con el trabajo por el campo en la frontera de la superficie $\Phi = \int_{S} \nabla\times\vec{A} \cdot d\vec{S} = \oint_{C} \vec{A} \cdot d\vec{l}$; sin embargo, para esto se requiere definir un potencial vectorial $\vec{A}$ tal que $\nabla\times\vec{A} = \vec{B}$.
+    \end{block}
+\end{frame}
+
+%--- Slide 9: Factores de Acople (continuación) ---
+\begin{frame}{Factores de Acople: $G_A$ (continuación)}
+    \transdissolve
+    \centering
+    \includegraphics[width=0.65\textwidth]{Potencial_magnetico_campo.jpg}
+    \captionof{figure}{\footnotesize \textit{Visualización del Campo Potencial Magnético.}}
+
+    \begin{block}{Un nuevo campo}
+        Se supone un campo matemático (que con los avances en cuántica se da a conocer que es un campo físico) llamado \textit{\textbf{Potencial Vectorial Magnético}} denotado con el símbolo $\vec{A}$.
+    \end{block}
+    
+    \begin{block}{Intento de Resolución de la integral}
+        Se llega a 2 integrales de línea elípticas, que al usar el teorema fundamental de las integrales de línea sobre ellas da cero.
+    \end{block}
+
+    \begin{block}{Duda Física}
+        Esto contradice la ley de Faraday-Lenz y la intuición... Ha de haber flujo; pero, si no entra por la sección transversal ¿entra por la sección longitudinal?
+    \end{block}
+\end{frame}
+
+%--- Slide 10: Factores de Acople (solución analítica) ---
+\begin{frame}{Factores de Acople: $G_A$ (solución analítica)}
+    \transdissolve
+    \centering
+    \includegraphics[width=0.65\textwidth]{Faraday_Lenz.jpg}
+    \captionof{figure}{\footnotesize \textit{Visualización del campo magnético y la FEM inducida.}}
+
+    \begin{block}{Una Respuesta Analítica}
+        Una vez tomada la parametrización correcta, la integral de línea se resuelve por sustitución simple, obteniendo la siguiente fórmula, donde: 
+        $N$: Número de vueltas,
+        $p$: Paso del cable (diámetro del cable),
+        $R$: Radio del solenoide,
+        $m_{mag}$: Momento magnético del imán,
+        $\mu$: Permeabilidad del medio.
+        \[
+            G_A = \frac{3\mu m_{mag} R^2}{4 \pi p} \left( \frac{1}{R^3} - 
+        \]
+    \end{block}
+\end{frame}
+
+%--- Slide 11: Factores de Acople: $G_L$ ---
+\begin{frame}{Factores de Acople: $G_L$}
+    \transdissolve
+    \centering
+    \includegraphics[width=0.65\textwidth]{Fuerza_Laplace_plano_xy.png}
+    \captionof{figure}{\footnotesize \textit{Visualización de la fuerza de Laplace.}}
+
+    \begin{block}{Fuerza de Repulsión Electromagnética}
+        Hay una fuerza de repulsión debido a la corriente que circula por el solenoide, dada por la expresión $\vec{F}_L = I \int d\vec{l} \times \vec{B}$.
+    \end{block}
+
+    \begin{block}{Ejes en los que actúa}
+       Partiendo de la declaración de que el imán está centrado en el centro del solenoide vemos que por simetría, cada 180º hay una fuerza en el plano xy que se anula con sí misma, quedando así, solamente la componente en z.
+    \end{block}
+
+    \begin{block}{Fuerza de Repulsión Electromagnética}
+        Resolviendo la integral de línea, se obtiene que el acople que acompaña a la fuerza de repulsión en el eje $z$ es la siguiente:
+        $N$: Número de vueltas,
+        $p$: Paso del cable (diámetro del cable),
+        $R$: Radio del solenoide,
+        $m_{mag}$: Momento magnético del imán,
+        $\mu$: Permeabilidad del medio.
+        \[ 
+            G_L = \frac{\mu m_{mag} R^2}{4 \pi p} \cdot \frac{1}{\sqrt{R^2+4\pi^2p^2}^3} 
+        \]
+    \end{block}
+\end{frame}
+
+% --- Slide 12: Pasando a la Matriz de Estado ---
+\begin{frame}{Transición al Espacio de Estados}
+    \transdissolve
+    Para resolver el sistema acoplado de forma eficiente, transformamos las EDOs de segundo orden en un sistema de primer orden mediante variables de estado [1].
+    \begin{columns}
+        \begin{column}{0.5\textwidth}
+            \textbf{Vector de Estado ($X$):}
+            Contiene la posición, velocidad, carga y corriente:
+            $$X = [z, \dot{z}, Q, \dot{Q}]^T$$
+            \textbf{Ecuación Matricial:}
+            $$\dot{X} = AX + BF$$
+        \end{column}
+        \begin{column}{0.5\textwidth}
+            \centering
+            \footnotesize
+            \[
+            A = \begin{bmatrix} 
+            0 & 1 & 0 & 0 \\
+            -k/m & -c/m & 0 & \mathbf{-G_L/m} \\
+            0 & 0 & 0 & 1 \\
+            0 & \mathbf{G_A/L} & -1/(LC) & -R/L 
+            \end{bmatrix}
+            \]
+            \captionof{figure}{\footnotesize \textit{La matriz A organiza las constantes físicas y los acoples (en negrita).}}
+        \end{column}
+    \end{columns}
+\end{frame}
+
+% --- Slide 13: Resolución de la Parte Homogénea (Analogía Escalar) ---
+\begin{frame}{Parte Homogénea: Analogía con EDO Escalar}
+    \transdissolve
+    La solución homogénea determina la dinámica natural del sismómetro sin perturbación externa ($\dot{X} - AX = 0$) [2].
+    \begin{itemize}
+        \item \textbf{Analogía Escalar:} El sistema se comporta como la ecuación $y' + ay = 0$, cuya solución es una exponencial [2].
+        \item \textbf{Propuesta de Solución:} Asumimos $X = v e^{\lambda t}$, donde $v$ es el eigenvector y $\lambda$ el eigenvalor [3].
+        \item \textbf{Problema de Eigenvalores:} Al sustituir, llegamos a la forma de álgebra lineal: 
+        $$(A - \lambda I)v = 0$$
+    \end{itemize}
+\end{frame}
+
+% --- Slide 14: Polinomio Característico: Forma de Producto ---
+\begin{frame}{El Polinomio Característico Acoplado}
+    \transdissolve
+    Al hallar el determinante $\det(A - \lambda I) = 0$, obtenemos una expresión que revela la unión de los dos mundos físicos [4].
+    \begin{block}{Estructura (Mecánica $\times$ Eléctrica) + Acoples}
+        $$(m\lambda^2 + c\lambda + k)(L\lambda^2 + R\lambda + 1/C) + \mathbf{G_L G_A \lambda^2} = 0$$
+    \end{block}
+    \begin{itemize}
+        \item Los dos primeros paréntesis describen el comportamiento del sismómetro si no hubiera interacción eléctrica [5].
+        \item El término final representa el flujo de energía entre el movimiento y la electricidad [5].
+    \end{itemize}
+\end{frame}
+
+% --- Slide 15: Parte Heterogénea y Campo Complejo ---
+\begin{frame}{Parte Heterogénea: Analogía y Campo Complejo}
+    \transdissolve
+    Para la respuesta ante la vibración de la mesa, resolvemos la parte no homogénea: $\dot{X} - AX = BF$ [6].
+    \begin{itemize}
+        \item \textbf{Analogía Escalar:} Se asemeja a $y' + ay = g(x)$, donde $g(x)$ es la excitación externa [7].
+        \item \textbf{Paso al Campo Complejo:} Usamos la \textbf{Identidad de Euler} para convertir el seno en una exponencial compleja:
+        $$F_V = \operatorname{Im}(F_{0\phi} e^{i\omega t})$$
+        \item \textbf{Ventaja:} Operar con exponenciales facilita las derivadas en el sistema matricial, transformando un problema diferencial en uno algebraico [8].
+    \end{itemize}
+\end{frame}
+
+% --- Slide 16: Solución Particular y Fasores ---
+\begin{frame}{Solución Particular: Inversión de Matriz}
+    \transdissolve
+    Proponemos una solución del tipo $X_p = \Psi e^{i\omega t}$ para hallar el vector de amplitudes complejas $\Psi$ [9, 10].
+    \begin{itemize}
+        \item \textbf{Resolución:} Tras cancelar la dependencia temporal, despejamos $\Psi$:
+        $$\Psi = (i\omega I - A)^{-1} BF_{0\phi}$$
+        \item \textbf{Resultado Físico:} La respuesta real del sistema (posición del imán y voltaje generado) se obtiene tomando la parte imaginaria del resultado [11].
+        \item \textbf{Conexión con el Modelo:} Esta técnica permite al detector predecir con exactitud cómo vibrará ante cualquier frecuencia $\omega$ [12].
+    \end{itemize}
+\end{frame}
+
+% --- Slide 17: Ventajas de integrar el circuito RLC ---
+\begin{frame}{Ventajas de integrar el circuito RLC al modelo}
+    \begin{block}{Obtención de la carga}
+        Al conocer los amperios, podemos seleccionar los componentes electrónicos y la protección de los mismos de mejor forma. Además del calibre de cable óptimo para maximizar el flujo y evitar un cortocircuito por calentamiento que disuelve la resina del cable. 
+    \end{block}
+
+    \begin{block}{Fuerza de Repulsión Electromagnética}
+        Al tener la fuerza de repulsión electromagnética, para imanes fuertes esta se vuelve vital. 
+    \end{block}
+
+    \begin{block}{Inercia Eléctrica y Frecuencia Natural Eléctrica}
+        Se define la inercia eléctrica como $\alpha= R/(2L)$ y la frecuencia natural eléctrica como $\omega_{V}=1/\sqrt{LC}$. Al ser $\alpha > \omega_{V}$ hay menos oscilación y remanencia del voltaje, minimizando corrientes parásitas. 
+    \end{block}
+\end{frame}
+
+% --- Slide 18: Fuerza externa ---
+\begin{frame}{Fuerza Externa}
+    \begin{block}{Hipótesis Inicial}
+        Se parte de un MAS (movimiento armónico simple) en el eje de interés. Se conoce que la posición está dada por $z_{\text{mesa}}(t)= Y_{0} \sin(\omega t + \phi)$ (estando la frecuencia en rad/s). Derivando dos veces se obtiene la aceleración $\ddot{z}_{\text{mesa}}(t)= -Y_{0} \omega^2 \sin(\omega t + \phi)$. Usando la definición de fuerza cuando la masa no cambia $F=ma$, se concluye que $F_{0}=Y_{0} \omega^2 m_{\text{vibrante}}$.
+    \end{block}
+
+    \begin{block}{Masa vibratoria}
+        Para determinar la dinámica real de la mesa vibratoria, se emplea un análisis de video "fotograma a fotograma".
+        Para hallar la masa que vibra de la mesa, se siguió la ecuación $\omega_{n}= \sqrt{\frac{k}{m}}$. Haciendo 'tracking' de la posición con y sin una masa externa conocida, y viendo cuánto se deflecta la mesa por esta, se conoce una componente de $k$ y $m$, y luego se resuelve por un sistema 2x2:
+        \[
+            m_{\text{mesa}}=\frac{m_{\text{añadida}}}{\frac{\omega_{n}}{\omega'_{n}}-1}
+        \]
+    \end{block}
+\end{frame}
+
+% --- Slide 19: Caracterización de la Mesa mediante Tracking ---
+\begin{frame}{Caracterización de la Mesa: Método de Tracking}
+    \transdissolve
+    Para determinar la dinámica real de la mesa vibratoria, se emplea un análisis de video "fotograma a fotograma" del sistema completo (mesa+sismómetro).
+    \begin{itemize}
+        \item \textbf{Seguimiento Visual:} Se realiza un \textit{tracking} de la posición del disco central de la mesa mientras el motor la excita a diferentes frecuencias [1].
+        \item \textbf{Reconstrucción de Onda:} El desplazamiento capturado permite reconstruir la señal de oscilación en el tiempo, identificando la amplitud máxima ($Y_0$) para cada punto de prueba [1, 2].
+        \item \textbf{Propósito:} Este proceso transforma una observación visual en datos cinemáticos precisos que el modelo puede procesar [3].
+    \end{itemize}
+\end{frame}
+
+% --- Slide 20: Análisis Espectral y Transformada de Fourier ---
+\begin{frame}{Identificación de Picos mediante FFT}
+    \transdissolve
+    El paso del dominio del tiempo al de la frecuencia es vital para hallar las "notas" naturales del sistema.
+    \begin{itemize}
+        \item \textbf{Algoritmo FFT:} El "Código Maestro" utiliza la Transformada Rápida de Fourier (vía \texttt{scipy.fft}) para descomponer la señal compleja en sus componentes rítmicos [4, 5].
+        \item \textbf{Detección de Resonancia:} El análisis revela picos de amplitud que corresponden exactamente a las \textbf{frecuencias naturales} ($\omega_n$) de la mesa [5].
+        \item \textbf{Filtrado:} Este método permite ignorar ruidos espurios y concentrarse únicamente en el comportamiento elástico del soporte [4].
+    \end{itemize}
+\end{frame}
+
+% --- Slide 21: Resultados Experimentales de Amplitud ---
+\begin{frame}{Evidencia Experimental: El Salto de Frecuencia}
+    \transdissolve
+    La comparación espectral permite validar el modelo de masa añadida.
+    \begin{columns}
+        \begin{column}{0.5\textwidth}
+            \centering
+            \includegraphics[width=0.9\textwidth]{Amplitud sin masa añadida.png}
+            \captionof{figure}{\footnotesize \textit{Pico original de la mesa en $\approx$ 30.025 Hz [6].}}
+        \end{column}
+        \begin{column}{0.5\textwidth}
+            \centering
+            \includegraphics[width=0.9\textwidth]{Amplitud con masa añadida.png}
+            \captionof{figure}{\footnotesize \textit{Pico desplazado a $\approx$ 62.493 Hz al acoplar el sistema [6].}}
+        \end{column}
+    \end{columns}
+    \vspace{0.3cm}
+    \centering
+    \footnotesize Estos picos son los insumos que el sistema 2x2 utiliza para despejar la masa vibrante efectiva.
+\end{frame}
+
+% --- Slide 22: Modelo Físico: Ley de Faraday-Lenz ---
+\begin{frame}{Modelo Físico: Ley de Faraday-Lenz}
+    \transdissolve
+    El principio de operación del sismómetro se basa en la generación de una Fuerza Electromotriz (FEM) inducida por el movimiento del núcleo.
+    \begin{columns}
+        \begin{column}{0.5\textwidth}
+            \begin{itemize}
+                \item \textbf{Origen del Voltaje:} El movimiento del imán a través del solenoide altera el flujo magnético ($\Phi$) en el tiempo [1].
+                \item \textbf{Relación Cinemática:} La rampa de flujo se traduce en voltaje mediante la regla de la cadena:
+                $$\mathcal{E}(z) = -\frac{d\Phi}{dz} \cdot \dot{z} = G_A \cdot \dot{z}$$ [2, 3]
+                \item Esta relación vincula directamente la velocidad mecánica con la señal eléctrica.
+            \end{itemize}
+        \end{column}
+        \begin{column}{0.5\textwidth}
+            \centering
+            \includegraphics[width=0.8\textwidth]{Faraday_Lenz.jpg}
+            \captionof{figure}{\footnotesize \textit{Representación de la inducción: el movimiento del imán genera la corriente necesaria para "encender" el sistema [4].}}
+        \end{column}
+    \end{columns}
+\end{frame}
+
+% --- Slide 23: Medición de Voltaje: Ley de Ohm Fasorial ---
+\begin{frame}{Medición de Voltaje: Ley de Ohm Fasorial}
+    \transdissolve
+    El modelo aplica la Ley de Ohm en su forma compleja para circuitos de corriente alterna (A.C.).
+    \begin{columns}
+        \begin{column}{0.4\textwidth}
+            \centering
+            \includegraphics[width=\textwidth]{Triangulo_Ohm.jpg}
+            \captionof{figure}{\footnotesize \textit{El triángulo de Ohm adaptado a la impedancia ($Z$) del modelo [5].}}
+        \end{column}
+        \begin{column}{0.6\textwidth}
+            \begin{itemize}
+                \item \textbf{Impedancia ($Z$):} Se compone de la resistencia ($R$) y la reactancia ($X$), la cual incluye efectos inductivos y capacitivos [6, 7], comúnmente llamadas corrientes parásitas.
+                \item \textbf{Cálculo del Voltaje:} Se estima mediante el producto de la corriente del sistema y la impedancia de diseño:
+                $$V_{\text{complejo}} = \mathcal{I}_{\text{complejo}} \cdot Z$$ [8, 9]
+                \item \textbf{Resultado Real:} Se toma la parte real o imaginaria según el desfase para sincronizar la teoría con la medición física [10].
+            \end{itemize}
+        \end{column}
+    \end{columns}
+\end{frame}
+
+% --- Slide 24: Comparativa de Resultados / Voltaje ---
+\begin{frame}{Comparativa de Resultados: Voltaje}
+    \transdissolve
+    Para determinar el voltaje de salida real que procesa el ESP-32, el modelo aplica los 2 modelos físicos anteriores (Faraday-Lenz y Ohm fasorial).
+    \begin{figure}
+        \centering
+        \begin{subfigure}[b]{0.45\textwidth}
+            \centering
+            \includegraphics[width=\textwidth]{voltaje_ohm.png}
+            \caption{Resultado de la Ley de Ohm}
+            \label{fig:ohm}
+        \end{subfigure}
+        \hfill
+        \begin{subfigure}[b]{0.45\textwidth}
+            \centering
+            \includegraphics[width=\textwidth]{voltaje_faraday.png}
+            \caption{Resultado de la Ley de Faraday-Lenz}
+            \label{fig:faraday}
+        \end{subfigure}
+        \vfill
+        \begin{subfigure}[b]{0.45\textwidth}
+            \centering
+            \includegraphics[width=\textwidth]{voltaje_exp.png}
+            \caption{Mediciones experimentales}
+            \label{fig:exp_v}
+        \end{subfigure}
+        \caption{Comparación de voltajes teóricos y experimentales.}
+        \label{fig:voltajes}
+    \end{figure}
+\end{frame}
+
+% --- Slide 25: Comparativa de Resultados / Posición ---
+\begin{frame}{Comparativa de Resultados: Posición}
+    \transdissolve
+    Para determinar la posición real, se integra numéricamente la velocidad (obtenida de la FEM) y se compara con datos reales.
+    \begin{figure}
+        \centering
+        \begin{subfigure}[b]{0.45\textwidth}
+            \centering
+            \includegraphics[width=\textwidth]{posicion_teorica.png}
+            \caption{Resultado del modelo teórico}
+            \label{fig:pos_teo}
+        \end{subfigure}
+        \hfill
+        \begin{subfigure}[b]{0.45\textwidth}
+            \centering
+            \includegraphics[width=\textwidth]{posicion_exp.png}
+            \caption{Mediciones experimentales}
+            \label{fig:pos_exp}
+        \end{subfigure}
+        \caption{Comparación de la posición estimada del imán.}
+        \label{fig:posiciones}
+    \end{figure}
+\end{frame}
+
+% --- Slide 26: Comparativa de Resultados / Velocidad ---
+\begin{frame}{Comparativa de Resultados: Velocidad}
+    \transdissolve
+    Para determinar la velocidad real, se multiplica por el inverso negativo del factor de acople $G_A$ para obtener la velocidad y compararla con datos reales.
+    \begin{figure}
+        \centering
+        \begin{subfigure}[b]{0.45\textwidth}
+            \centering
+            \includegraphics[width=\textwidth]{velocidad_teorica.png}
+            \caption{Resultado del modelo teórico}
+            \label{fig:vel_teo}
+        \end{subfigure}
+        \hfill
+        \begin{subfigure}[b]{0.45\textwidth}
+            \centering
+            \includegraphics[width=\textwidth]{velocidad_exp.png}
+            \caption{Mediciones experimentales}
+            \label{fig:vel_exp}
+        \end{subfigure}
+        \caption{Comparación de la velocidad estimada del imán.}
+        \label{fig:velocidades}
+    \end{figure}
+\end{frame}
+
+% --- Slide 27: Agradecimientos y Despedida ---
+\begin{frame}{Agradecimientos y Despedida}
+    \transdissolve
+    Se quiere agradecer a los profesores Juan Carlos Castrillón, Pablo Toro, Carlos Mario Cartagena por contribuciones al modelo físico y matemático del proyecto y a las plataformas de inteligencia artificial Gemini, DeepSeek, Claude IA por la ayuda de depuración de errores matemáticos y de código. 
+
+    Muchas gracias por su atención.
+\end{frame}
+
+\end{document}
