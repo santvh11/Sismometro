@@ -16,7 +16,7 @@ import logging
 # Resubir a github
 
 # -------------------------------------------------------------------
-# 0. Selección del modelo:
+# 0. Selección del modelo:H
 # -------------------------------------------------------------------
 
 while True:
@@ -796,10 +796,10 @@ def Solver(
     # =================================================================
     elif simular:
         print("\n--- Entrando a Adquisición de Datos en Tiempo Real ---")
-        PUERTO = "COM3"
+        PUERTO = "COM4"
         BAUDIOS = 115200
         TAMANO_VENTANA = 512
-        FS = 1000.0  # Frecuencia de muestreo supuesta (Hz)
+        FS = 900.0  # Frecuencia de muestreo supuesta (Hz)
         FC_PASA_ALTAS = 0.5
         FC_PASA_BAJAS = 40.0
 
