@@ -16,7 +16,7 @@ import logging
 # Resubir a github
 
 # -------------------------------------------------------------------
-# 0. Selección del modelo:H
+# 0. Selección del modelo:
 # -------------------------------------------------------------------
 
 while True:
@@ -126,7 +126,7 @@ class SectionParams:
     m_sis: float = 48.6 * (1e-3)  # Masa total del sismómetro (Kg)
     m_mes: float = 4 * (1e-3)  # Masa vibrante de la mesa (Kg)
     factor_amplificacion: float = 8.219  # Ganancia del amplificador
-    subida_voltaje: float = 1.03  # Offset del ADC (voltios)
+    subida_voltaje: float = 0  # Offset del ADC (voltios)
     temp: float = 299.15  # Temperatura ambiente (K)
 
     # Condiciones iniciales
@@ -791,17 +791,19 @@ def Solver(
         plt.legend()
         plt.show()
 
-    # =================================================================
+        # =================================================================
     # MODO 3: VISUALIZACIÓN EN TIEMPO REAL (DAQ CON ESP32)
     # =================================================================
     elif simular:
         print("\n--- Entrando a Adquisición de Datos en Tiempo Real ---")
-        PUERTO = "COM4"
+        PUERTO = "COM3"
         BAUDIOS = 115200
         TAMANO_VENTANA = 512
-        FS = 900.0  # Frecuencia de muestreo supuesta (Hz)
+        FS = 1000.0  # Frecuencia de muestreo supuesta (Hz)
         FC_PASA_ALTAS = 0.5
         FC_PASA_BAJAS = 40.0
+        TIMEOUT_SEGUNDOS = 4  # Segundos sin datos para reiniciar la conexión
+        MAX_REINTENTOS = 3
 
         # Opción de solo guardar sin gráficos (ahorro de recursos)
         MODO_SOLO_GUARDAR = bool(
@@ -816,17 +818,42 @@ def Solver(
                 )
             )
 
+        # ---------------------------------------------------------------
+        # Función para conectar al puerto serie con reintentos
+        # ---------------------------------------------------------------
+        def conectar_serial(puerto, baudios, intento=1):
+            try:
+                esp = serial.Serial(puerto, baudios)
+                print(f"Conectado exitosamente a {puerto}. Recibiendo datos...")
+                return esp
+            except Exception as e:
+                print(f"Error al conectar (intento {intento}): {e}")
+                return None
+
+        # Intento inicial de conexión
+        reintentos = 0
+        esp32 = None
+        while reintentos < MAX_REINTENTOS and esp32 is None:
+            esp32 = conectar_serial(PUERTO, BAUDIOS, reintentos + 1)
+            if esp32 is None:
+                reintentos += 1
+                if reintentos < MAX_REINTENTOS:
+                    print(f"Reintentando en 2 segundos...")
+                    time.sleep(2)
+        if esp32 is None:
+            print(
+                "No se pudo conectar al ESP32 después de varios intentos. Saliendo del modo 3."
+            )
+            return
+
         # Buffers circulares
         buffer_t = collections.deque(maxlen=TAMANO_VENTANA)
         buffer_v = collections.deque(maxlen=TAMANO_VENTANA)
-        estado = {"tiempo_inicial": None}
-
-        try:
-            esp32 = serial.Serial(PUERTO, BAUDIOS)
-            print(f"Conectado exitosamente a {PUERTO}. Recibiendo datos...")
-        except Exception as e:
-            print(f"Error crítico al conectar con el ESP32 en el puerto {PUERTO}: {e}")
-            return
+        estado = {
+            "tiempo_inicial": None,
+            "ultima_actualizacion": time.time(),
+            "conexion_activa": True,
+        }
 
         def aplicar_filtros(tiempo, voltaje):
             """Filtro pasa-altas + pasa-bajas usando filtfilt para evitar desfase."""
@@ -836,6 +863,42 @@ def Solver(
             v_filt = filtfilt(b_altas, a_altas, voltaje)
             v_filt = filtfilt(b_bajas, a_bajas, v_filt)
             return v_filt
+
+        # ---------------------------------------------------------------
+        # Función para reiniciar la conexión si se pierden los datos
+        # ---------------------------------------------------------------
+        def reiniciar_conexion():
+            nonlocal esp32, reintentos
+            print(
+                "\n⚠️  Sin datos durante {} segundos. Reintentando conexión...".format(
+                    TIMEOUT_SEGUNDOS
+                )
+            )
+            try:
+                esp32.close()
+            except:
+                pass
+            time.sleep(1)
+            reintentos += 1
+            if reintentos < MAX_REINTENTOS:
+                esp32 = conectar_serial(PUERTO, BAUDIOS, reintentos + 1)
+                if esp32 is not None:
+                    # Limpiar buffers y estado
+                    buffer_t.clear()
+                    buffer_v.clear()
+                    estado["tiempo_inicial"] = None
+                    estado["ultima_actualizacion"] = time.time()
+                    estado["conexion_activa"] = True
+                    print("Conexión restablecida.")
+                else:
+                    estado["conexion_activa"] = False
+                    print("Fallo en la reconexión.")
+            else:
+                print("Máximo de reintentos alcanzado. Cerrando modo de visualización.")
+                estado["conexion_activa"] = False
+                plt.close("all")
+                # Salimos de la función Solver (opcional: podríamos solo salir del modo)
+                raise SystemExit("Se perdió la comunicación con el ESP32.")
 
         # -----------------------------------------------
         # SUB-MODO: SOLO GUARDAR DATOS (HEADLESS)
@@ -864,6 +927,9 @@ def Solver(
                     )
                     ultimo_log = time.time()
                     while True:
+                        # Control de timeout también en modo guardado
+                        if not estado["conexion_activa"]:
+                            break
                         while esp32.in_waiting > 0:
                             try:
                                 linea = (
@@ -882,9 +948,20 @@ def Solver(
                                     ) / 1e6
                                     buffer_t.append(t_segundos)
                                     buffer_v.append(v_crudo)
+                                    estado["ultima_actualizacion"] = time.time()
                             except Exception:
                                 pass
-                        # Procesar cada 0.1 segundos
+                        # Verificar timeout
+                        if (
+                            time.time() - estado["ultima_actualizacion"]
+                            > TIMEOUT_SEGUNDOS
+                        ):
+                            reiniciar_conexion()
+                            if not estado["conexion_activa"]:
+                                break
+                            else:
+                                continue
+                        # Procesar cada 0.1 segundos si hay ventana llena
                         if (
                             len(buffer_t) == TAMANO_VENTANA
                             and (time.time() - ultimo_log) >= 0.1
@@ -918,6 +995,12 @@ def Solver(
             except KeyboardInterrupt:
                 print("\nCaptura detenida por el usuario. Archivo guardado.")
                 esp32.close()
+            except SystemExit:
+                pass
+            finally:
+                if esp32 and esp32.is_open:
+                    esp32.close()
+            return
 
         # -----------------------------------------------
         # SUB-MODO: VISUALIZACIÓN CON GRÁFICAS EN TIEMPO REAL
@@ -954,6 +1037,17 @@ def Solver(
                 ax_fem.set_ylabel("Voltaje (V)")
                 ax_fem.grid(True)
                 ax_fem.legend(loc="upper right")
+                # Texto de timeout
+                text_timeout = ax_fem.text(
+                    0.5,
+                    0.95,
+                    "",
+                    transform=ax_fem.transAxes,
+                    ha="center",
+                    fontsize=10,
+                    color="red",
+                    bbox=dict(facecolor="white", alpha=0.8),
+                )
             if VISTA_SELECCIONADA in [0, 2]:
                 (linea_vel,) = ax_vel.plot(
                     [], [], lw=1.5, color="orange", label="Velocidad del Imán"
@@ -962,6 +1056,17 @@ def Solver(
                 ax_vel.set_ylabel("Velocidad (m/s)")
                 ax_vel.grid(True)
                 ax_vel.legend(loc="upper right")
+                if VISTA_SELECCIONADA == 0:
+                    text_timeout = ax_vel.text(
+                        0.5,
+                        0.95,
+                        "",
+                        transform=ax_vel.transAxes,
+                        ha="center",
+                        fontsize=10,
+                        color="red",
+                        bbox=dict(facecolor="white", alpha=0.8),
+                    )
             if VISTA_SELECCIONADA in [0, 3]:
                 (linea_pos,) = ax_pos.plot(
                     [], [], lw=1.5, color="darkgreen", label="Posición del Imán"
@@ -972,6 +1077,17 @@ def Solver(
                     ax_pos.set_xlabel("Tiempo (s)")
                 ax_pos.grid(True)
                 ax_pos.legend(loc="upper right")
+                if VISTA_SELECCIONADA == 0:
+                    text_timeout = ax_pos.text(
+                        0.5,
+                        0.95,
+                        "",
+                        transform=ax_pos.transAxes,
+                        ha="center",
+                        fontsize=10,
+                        color="red",
+                        bbox=dict(facecolor="white", alpha=0.8),
+                    )
             if VISTA_SELECCIONADA in [0, 4]:
                 (linea_f,) = ax_fft.plot([], [], lw=1.5, color="red")
                 ax_fft.set_title("Dominio de la Frecuencia (FFT)")
@@ -979,10 +1095,22 @@ def Solver(
                 ax_fft.set_xlabel("Frecuencia (Hz)")
                 ax_fft.set_xlim(0, 120)
                 ax_fft.grid(True)
+                if VISTA_SELECCIONADA == 0:
+                    text_timeout = ax_fft.text(
+                        0.5,
+                        0.95,
+                        "",
+                        transform=ax_fft.transAxes,
+                        ha="center",
+                        fontsize=10,
+                        color="red",
+                        bbox=dict(facecolor="white", alpha=0.8),
+                    )
 
             plt.tight_layout()
 
             def actualizar(frame):
+                # Leer datos del puerto mientras haya
                 while esp32.in_waiting > 0:
                     try:
                         linea = (
@@ -997,8 +1125,26 @@ def Solver(
                             t_segundos = (t_micros - estado["tiempo_inicial"]) / 1e6
                             buffer_t.append(t_segundos)
                             buffer_v.append(v_crudo)
+                            estado["ultima_actualizacion"] = time.time()
                     except Exception:
                         pass
+
+                # Verificar timeout de recepción de datos
+                if time.time() - estado["ultima_actualizacion"] > TIMEOUT_SEGUNDOS:
+                    reiniciar_conexion()
+                    if not estado["conexion_activa"]:
+                        # Cerrar figura y salir
+                        plt.close(fig)
+                        return ()
+                    else:
+                        # Mostrar mensaje de espera en la gráfica
+                        if "text_timeout" in locals():
+                            text_timeout.set_text("Esperando datos... Reintentando")
+                        return ()
+
+                # Limpiar mensaje de timeout si ya hay datos
+                if "text_timeout" in locals():
+                    text_timeout.set_text("")
 
                 if len(buffer_t) == TAMANO_VENTANA:
                     t_arr = np.array(buffer_t)
@@ -1048,51 +1194,29 @@ def Solver(
 
             ani = animation.FuncAnimation(fig, actualizar, interval=30, blit=False)
             plt.show()
-            esp32.close()
+            if esp32 and esp32.is_open:
+                esp32.close()
 
-    # =================================================================
-    # MODO 4: DESCARGA DE DATOS CRUDOS (SIN PROCESAR) A CSV
-    # =================================================================
-    elif datos_descarga:
-        print("\n--- Modo Descarga de Datos Crudos ---")
-        PUERTO = "COM3"
-        BAUDIOS = 115200
-        nombre_archivo = f"datos_crudos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        print(f"Conectando a {PUERTO}...")
-        try:
-            esp32 = serial.Serial(PUERTO, BAUDIOS)
-            print("Grabando datos crudos. Presione Ctrl+C para detener.")
-            with open(nombre_archivo, mode="w", newline="") as archivo:
-                escritor = csv.writer(archivo)
-                escritor.writerow(["Tiempo_micros", "Voltaje_crudo"])
-                while True:
-                    if esp32.in_waiting > 0:
-                        linea = (
-                            esp32.readline().decode("utf-8", errors="ignore").strip()
-                        )
-                        if "," in linea:
-                            t_micros, v_str = linea.split(",")
-                            escritor.writerow([t_micros, v_str])
-                            print(f"Guardado: {t_micros}, {v_str}")
-        except KeyboardInterrupt:
-            print("\nDescarga finalizada. Archivo guardado.")
-            esp32.close()
-        except Exception as e:
-            print(f"Error: {e}")
-
-    # =================================================================
-    # MODO 5: EXPERIMENTO PARA ESTIMAR EL COEFICIENTE 'c' (NEWTON-RAPHSON)
+        # =================================================================
+    # MODO 5: EXPERIMENTO PARA ESTIMAR EL COEFICIENTE 'c'
     # =================================================================
     elif experimento_c:
-        print("\n--- Experimento para determinar 'c' (Newton-Raphson por ventanas) ---")
+        print("\n--- Experimento para determinar 'c' ---")
+        print("Seleccione el método de estimación:")
+        print("  1 - Newton-Raphson (basado en posición, requiere integración)")
+        print("  2 - Ajuste senoidal (basado en velocidad, más rápido y robusto)")
+        metodo_c = input("Opción (1/2): ").strip()
+
         PUERTO = "COM3"
         BAUDIOS = 115200
         FS = 900.0
-        UMBRAL_DISPARO = 0.05  # Voltaje que activa la captura
-        TIEMPO_CAPTURA = 3.0  # Segundos de registro después del disparo
+        UMBRAL_DISPARO = 0.05
+        TIEMPO_CAPTURA = 3.0
 
+        # -----------------------------------------------------------------
+        # Función de captura de datos (común a ambos métodos)
+        # -----------------------------------------------------------------
         def capturar_evento_sismico():
-            """Espera un disparo y captura una ráfaga de datos."""
             print(f"Conectando a {PUERTO}...")
             try:
                 esp32 = serial.Serial(PUERTO, BAUDIOS)
@@ -1139,158 +1263,241 @@ def Solver(
 
             esp32.close()
             t_raw = np.array(datos_t)
-            t_onda = t_raw - t_raw[0]  # Reiniciar tiempo a cero
+            t_onda = t_raw - t_raw[0]
             v_onda = np.array(datos_v)
             print(f"Captura finalizada. Puntos: {len(t_onda)}")
             return t_onda, v_onda
 
-        # ---------------------------------------------------------------
-        # SOLVER NEWTON-RAPHSON (basado en posición, corregido)
-        # ---------------------------------------------------------------
-        def solver_newton_raphson_ventana(
-            t_w,  # vector de tiempo de la ventana (s)
-            v_w,  # voltaje (FEM) en la ventana (V)  [ya restado offset, sin filtrar? se usa directamente]
-            c_inicial,  # valor inicial de c
-            G_sub_A,
-            factor_amp,
-            m,
-            k,
-            omega,
-            omega_n,
-            F_0,
-        ):
-            # Integral del voltaje para obtener impulso electromecánico
-            integral_voltaje = simpson(v_w, x=t_w)
-            Electro = (-1 / (G_sub_A * factor_amp)) * integral_voltaje
+        # -----------------------------------------------------------------
+        # MÉTODO 1: NEWTON-RAPHSON (basado en posición, con integral)
+        # -----------------------------------------------------------------
+        if metodo_c == "1":
+            print("\n--- Usando método de Newton-Raphson (posición) ---")
 
-            c = c_inicial  # variable de trabajo
-            for _ in range(80):
-                c_safe = c if abs(c) > 1e-9 else 1e-9
+            def solver_newton_raphson_ventana(
+                t_w, v_w, c_inicial, G_sub_A, factor_amp, m, k, omega, omega_n, F_0
+            ):
+                integral_voltaje = simpson(v_w, x=t_w)
+                Electro = (-1 / (G_sub_A * factor_amp)) * integral_voltaje
+                c = c_inicial
+                for _ in range(80):
+                    c_safe = c if abs(c) > 1e-9 else 1e-9
+                    discriminante = np.sqrt(np.abs(c_safe**2 - 4 * m * k))
+                    disc_safe = discriminante if discriminante > 1e-9 else 1e-9
+                    zi = c_safe / (2 * np.sqrt(m * k))
+                    den_arctan = 1 - (omega**2 / omega_n**2)
+                    den_arctan = den_arctan if abs(den_arctan) > 1e-9 else 1e-9
+                    X_interno = (2 * zi * (omega / omega_n)) / den_arctan
+                    phi = np.arctan(X_interno)
+                    g = np.cos(phi)
+                    h = 1 - (discriminante / c_safe)
+                    p = np.exp(t_w * (-c_safe - discriminante) / (2 * m)) - np.exp(
+                        t_w * (-c_safe + discriminante) / (2 * m)
+                    )
+                    dX_dc = (omega / omega_n) / (np.sqrt(m * k) * den_arctan)
+                    dphi_dc = (1 / (1 + X_interno**2)) * dX_dc
+                    g_prime = -np.sin(phi) * dphi_dc
+                    h_prime = (-4 * m * k) / (c_safe**2 * disc_safe)
+                    term1 = (-1 - c_safe / disc_safe) * np.exp(
+                        t_w * (-c_safe - discriminante) / (2 * m)
+                    )
+                    term2 = (-1 + c_safe / disc_safe) * np.exp(
+                        t_w * (-c_safe + discriminante) / (2 * m)
+                    )
+                    p_prime = (t_w / (2 * m)) * (term1 - term2)
+                    p_mean = np.mean(p)
+                    p_prime_mean = np.mean(p_prime)
+                    f_c = Electro - (F_0 / 2) * (g * h * p_mean)
+                    df_dc = -(F_0 / 2) * (
+                        g_prime * h * p_mean
+                        + g * h_prime * p_mean
+                        + g * h * p_prime_mean
+                    )
+                    if abs(df_dc) < 1e-12:
+                        break
+                    c_nuevo = c_safe - (f_c / df_dc)
+                    if abs(c_nuevo - c_safe) < 1e-6:
+                        return c_nuevo
+                    c = c_nuevo
+                return c
 
-                # Discriminante (usamos abs para evitar raíz negativa, aunque el sistema debería ser sobreamortiguado)
-                discriminante = np.sqrt(np.abs(c_safe**2 - 4 * m * k))
-                disc_safe = discriminante if discriminante > 1e-9 else 1e-9
-
-                # Factor de amortiguamiento
-                zi = c_safe / (2 * np.sqrt(m * k))
-
-                # Ángulo de fase de la respuesta forzada
-                den_arctan = 1 - (omega**2 / omega_n**2)
-                den_arctan = den_arctan if abs(den_arctan) > 1e-9 else 1e-9
-                X_interno = (2 * zi * (omega / omega_n)) / den_arctan
-                phi = np.arctan(X_interno)
-
-                # Funciones auxiliares (solución homogénea para sistema sobreamortiguado)
-                g = np.cos(phi)
-                h = 1 - (discriminante / c_safe)
-                p = np.exp(t_w * (-c_safe - discriminante) / (2 * m)) - np.exp(
-                    t_w * (-c_safe + discriminante) / (2 * m)
+            def analizar_y_graficar(t_onda, v_onda):
+                print("Procesando ventanas deslizantes (Newton-Raphson)...")
+                VENTANA = 300
+                PASO = 50
+                t_ventana, c_evolucion = [], []
+                c_semilla = 1.0
+                for i in range(0, len(t_onda) - VENTANA, PASO):
+                    t_w = t_onda[i : i + VENTANA]
+                    v_w = v_onda[i : i + VENTANA]
+                    c_calc = solver_newton_raphson_ventana(
+                        t_w,
+                        v_w,
+                        c_semilla,
+                        G_sub_A,
+                        factor_amplificacion,
+                        m,
+                        k,
+                        omega,
+                        omega_sub_n,
+                        F_0,
+                    )
+                    c_evolucion.append(c_calc)
+                    t_ventana.append(t_w[len(t_w) // 2])
+                    c_semilla = c_calc
+                c_arr = np.array(c_evolucion)
+                print("\n========== RESULTADOS (Newton-Raphson) ==========")
+                print(f" Media c = {np.mean(c_arr):.6f} Ns/m")
+                print(f" Mediana   = {np.median(c_arr):.6f}")
+                print(f" Desv. est. = {np.std(c_arr):.6f}")
+                print("==================================================")
+                # Gráfica
+                fig, ax1 = plt.subplots(figsize=(12, 7))
+                plt.style.use("seaborn-v0_8-darkgrid")
+                ax1.set_xlabel("Tiempo (s)")
+                ax1.set_ylabel("Voltaje Centrado (V)", color="tab:blue")
+                ax1.plot(
+                    t_onda, v_onda, color="tab:blue", alpha=0.4, label="FEM (ESP32)"
                 )
-
-                # Derivadas respecto a c
-                dX_dc = (omega / omega_n) / (np.sqrt(m * k) * den_arctan)
-                dphi_dc = (1 / (1 + X_interno**2)) * dX_dc
-                g_prime = -np.sin(phi) * dphi_dc
-
-                h_prime = (-4 * m * k) / (c_safe**2 * disc_safe)
-
-                term1 = (-1 - c_safe / disc_safe) * np.exp(
-                    t_w * (-c_safe - discriminante) / (2 * m)
+                ax1.tick_params(axis="y", labelcolor="tab:blue")
+                ax2 = ax1.twinx()
+                ax2.set_ylabel("c(t) [Ns/m]", color="tab:red")
+                ax2.plot(
+                    t_ventana,
+                    c_evolucion,
+                    color="tab:red",
+                    linewidth=2.5,
+                    marker=".",
+                    label="c estimado",
                 )
-                term2 = (-1 + c_safe / disc_safe) * np.exp(
-                    t_w * (-c_safe + discriminante) / (2 * m)
+                ax2.tick_params(axis="y", labelcolor="tab:red")
+                fig.suptitle(
+                    "Método Newton-Raphson (basado en posición)",
+                    fontsize=14,
+                    fontweight="bold",
                 )
-                p_prime = (t_w / (2 * m)) * (term1 - term2)
+                fig.tight_layout()
+                plt.show()
 
-                # Promedios sobre la ventana
-                p_mean = np.mean(p)
-                p_prime_mean = np.mean(p_prime)
+            t_data, v_data = capturar_evento_sismico()
+            if t_data is not None:
+                analizar_y_graficar(t_data, v_data)
 
-                # Función a cero: f(c) = Electro - (F_0/2) * (g * h * p_mean)
-                f_c = Electro - (F_0 / 2) * (g * h * p_mean)
-                df_dc = -(F_0 / 2) * (
-                    g_prime * h * p_mean + g * h_prime * p_mean + g * h * p_prime_mean
+        # -----------------------------------------------------------------
+        # MÉTODO 2: AJUSTE SENOIDAL (basado en velocidad)
+        # -----------------------------------------------------------------
+        elif metodo_c == "2":
+            print("\n--- Usando método de ajuste senoidal (velocidad) ---")
+
+            # Convertir voltaje a velocidad (ya sin offset y con ganancia)
+            # v_real (FEM) ya está en voltios. La velocidad real es v_real / (G_sub_A * R_porcentaje)
+            # pero la constante la podemos absorber en el ajuste, o mejor extraer la amplitud de velocidad.
+            def estimar_c_desde_velocidad(
+                t, v_fem, F_0, k, m, omega, G_sub_A, R_porcentaje
+            ):
+                # Primero obtenemos la velocidad real a partir de la FEM
+                velocidad = v_fem / (G_sub_A * R_porcentaje)  # [m/s]
+
+                # Modelo: v(t) = A * cos(omega*t - phi) + C
+                def modelo(t, A, phi, C):
+                    return A * np.cos(omega * t - phi) + C
+
+                # Ajuste por mínimos cuadrados
+                try:
+                    p0 = [np.max(np.abs(velocidad)), 0.0, 0.0]
+                    popt, _ = curve_fit(modelo, t, velocidad, p0=p0)
+                    A_est, phi_est, C_est = popt
+                except Exception as e:
+                    print(f"Error en el ajuste senoidal: {e}")
+                    return None, None, None, None
+                # Calcular c a partir de la amplitud
+                discriminante = (F_0 / A_est) ** 2 - (k - m * omega**2) ** 2
+                if discriminante < 0:
+                    c_amp = None
+                else:
+                    c_amp = np.sqrt(discriminante) / omega
+                # Calcular c a partir de la fase (solo si el denominador no es cero)
+                den_fase = k - m * omega**2
+                if abs(den_fase) < 1e-9:
+                    c_fase = None
+                else:
+                    c_fase = (den_fase / omega) * np.tan(phi_est)
+                return c_amp, c_fase, A_est, phi_est
+
+            def analizar_y_graficar_velocidad(t_onda, v_onda):
+                print("Procesando ventanas deslizantes (ajuste senoidal)...")
+                VENTANA = 300
+                PASO = 50
+                t_ventana, c_amp_list, c_fase_list = [], [], []
+                # Se selecciona una porción estable (por ejemplo, después de los primeros 0.5 s)
+                # para evitar transitorios. En ventanas pequeñas también funciona, pero mejor estabilizado.
+                for i in range(0, len(t_onda) - VENTANA, PASO):
+                    t_w = t_onda[i : i + VENTANA]
+                    v_w = v_onda[i : i + VENTANA]
+                    c_amp, c_fase, A_est, phi_est = estimar_c_desde_velocidad(
+                        t_w, v_w, F_0, k, m, omega, G_sub_A, R_porcentaje
+                    )
+                    if c_amp is not None:
+                        c_amp_list.append(c_amp)
+                    if c_fase is not None:
+                        c_fase_list.append(c_fase)
+                    t_ventana.append(t_w[len(t_w) // 2])
+                # Mostrar resultados estadísticos
+                c_amp_arr = np.array(c_amp_list)
+                c_fase_arr = np.array(c_fase_list)
+                print("\n========== RESULTADOS (Ajuste senoidal) ==========")
+                if len(c_amp_arr) > 0:
+                    print(
+                        f" c por AMPLITUD: media = {np.mean(c_amp_arr):.6f} Ns/m, mediana = {np.median(c_amp_arr):.6f}, desv = {np.std(c_amp_arr):.6f}"
+                    )
+                if len(c_fase_arr) > 0:
+                    print(
+                        f" c por FASE:     media = {np.mean(c_fase_arr):.6f} Ns/m, mediana = {np.median(c_fase_arr):.6f}, desv = {np.std(c_fase_arr):.6f}"
+                    )
+                print("===================================================")
+                # Gráfica comparativa
+                fig, ax1 = plt.subplots(figsize=(12, 7))
+                plt.style.use("seaborn-v0_8-darkgrid")
+                ax1.set_xlabel("Tiempo (s)")
+                ax1.set_ylabel("Voltaje Centrado (V)", color="tab:blue")
+                ax1.plot(
+                    t_onda, v_onda, color="tab:blue", alpha=0.4, label="FEM (ESP32)"
                 )
-
-                if abs(df_dc) < 1e-12:
-                    break
-
-                c_nuevo = c_safe - (f_c / df_dc)
-                if abs(c_nuevo - c_safe) < 1e-6:
-                    return c_nuevo
-                c = c_nuevo
-            return c  # retorna el último valor
-
-        def analizar_y_graficar(t_onda, v_onda):
-            print("Procesando ventanas deslizantes...")
-            VENTANA = 300
-            PASO = 50
-            t_ventana = []
-            c_evolucion = []
-            c_semilla = 1.0  # valor inicial para c
-
-            for i in range(0, len(t_onda) - VENTANA, PASO):
-                t_w = t_onda[i : i + VENTANA]
-                v_w = v_onda[i : i + VENTANA]  # voltaje real (ya sin offset)
-
-                # Llamada al solver de Newton-Raphson (usa la posición)
-                c_calc = solver_newton_raphson_ventana(
-                    t_w,
-                    v_w,
-                    c_semilla,
-                    G_sub_A,
-                    factor_amplificacion,
-                    m,
-                    k,
-                    omega,
-                    omega_sub_n,
-                    F_0,
+                ax1.tick_params(axis="y", labelcolor="tab:blue")
+                ax2 = ax1.twinx()
+                ax2.set_ylabel("c(t) [Ns/m]", color="tab:red")
+                if len(c_amp_arr) > 0:
+                    ax2.plot(
+                        t_ventana[: len(c_amp_arr)],
+                        c_amp_arr,
+                        "o-",
+                        color="tab:red",
+                        label="c por amplitud",
+                    )
+                if len(c_fase_arr) > 0:
+                    ax2.plot(
+                        t_ventana[: len(c_fase_arr)],
+                        c_fase_arr,
+                        "s-",
+                        color="tab:orange",
+                        label="c por fase",
+                    )
+                ax2.tick_params(axis="y", labelcolor="tab:red")
+                ax2.legend(loc="upper right")
+                fig.suptitle(
+                    "Método de Ajuste Senoidal (basado en velocidad)",
+                    fontsize=14,
+                    fontweight="bold",
                 )
-                c_evolucion.append(c_calc)
-                t_ventana.append(t_w[len(t_w) // 2])
-                c_semilla = c_calc  # siguiente semilla
+                fig.tight_layout()
+                plt.show()
 
-            c_arr = np.array(c_evolucion)
-            print("\n===========================================")
-            print("      RESULTADOS ESTADÍSTICOS DE 'c'       ")
-            print("===========================================")
-            print(f" Media              : {np.mean(c_arr):.6f} Ns/m")
-            print(f" Mediana            : {np.median(c_arr):.6f} Ns/m")
-            print(f" Desviación Estándar: {np.std(c_arr):.6f}")
-            print("===========================================")
+            t_data, v_data = capturar_evento_sismico()
+            if t_data is not None:
+                analizar_y_graficar_velocidad(t_data, v_data)
 
-            # Gráfica doble eje: FEM original y evolución de c
-            fig, ax1 = plt.subplots(figsize=(12, 7))
-            plt.style.use("seaborn-v0_8-darkgrid")
-            ax1.set_xlabel("Tiempo (s)")
-            ax1.set_ylabel("Voltaje Centrado (V)", color="tab:blue")
-            ax1.plot(t_onda, v_onda, color="tab:blue", alpha=0.4, label="FEM (ESP32)")
-            ax1.tick_params(axis="y", labelcolor="tab:blue")
-            ax2 = ax1.twinx()
-            ax2.set_ylabel(
-                "Coeficiente de amortiguamiento c(t) [Ns/m]", color="tab:red"
-            )
-            ax2.plot(
-                t_ventana,
-                c_evolucion,
-                color="tab:red",
-                linewidth=2.5,
-                marker=".",
-                label="c estimado",
-            )
-            ax2.tick_params(axis="y", labelcolor="tab:red")
-            fig.suptitle(
-                "Caracterización de Amortiguamiento No Lineal (Resorte Cónico)",
-                fontsize=14,
-                fontweight="bold",
-            )
-            fig.tight_layout()
-            plt.show()
-
-        # Ejecutar el experimento
-        t_data, v_data = capturar_evento_sismico()
-        if t_data is not None:
-            analizar_y_graficar(t_data, v_data)
+        else:
+            print("Opción no válida. Saliendo del modo 5.")
 
 
 # ===================================================================
