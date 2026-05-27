@@ -94,21 +94,83 @@ while True:
 # Silicona 10.000cts=9.7
 # Silicona 12.500cts=11.64
 # -------------------------------------------------------------------
-# Tablas de diámetros/vueltas y longitud del resorte (Kg/m*s)
-# resorte pequeño:
-# vueltas:18
-# d_sección_transversal:75*(1e-5) metros
-# L_libre_iman=135*(1e-3) metros
-# ----------------
-# resorte mediano:
-# vueltas: 15
-# d_sección_transversal: 75*(1e-5) metros
-# L_libre_iman=1125*(1e-4) metros
-# ----------------
-# 1.5*(1e-3) Kg (resorte pequeño)
-# 3.4*(1e-3) Kg (resorte mediano)
-# k= 272 (resorte pequeño)
-# k= 104 (resorte mediano)
+# Imánes:
+# Ambos son de Neodimio N35
+# Masa del imán de la bobina pequeña:
+# Masa del imán de la bobina grande: 3,1
+# Escalar de momento magnético del imán de la bobina pequeña: 63.23e-03
+# Escalar de momento magnético del imán de la bobina grande: 13.33e-03
+# -------------------------------------------------------------------
+# Constantes Elásticas
+# 1.5*(1e-3) Kg (resorte bobina grande)
+# 1*(1e-3) Kg (resorte bobina pequeña)
+# k= 83 (resorte bobina pequeña)
+# k= 112 (resorte bobina grande)
+# -------------------------------------------------------------------
+# Parámetros Eléctricos:
+# ----------------------------
+# Bobina Pequeña:
+# Inductancia: 5*10^-2 Henrios
+# Capacitancia: 4*10^-5 Faradios
+# Resistencia: 482 Ohmnios
+# N. vueltas: 3000
+# Calibre Cable / Diámetro:  AGW 38 / 0.102 * 10^-6 m^2
+# ----------------------------
+# Bobina Grande:
+# Inductancia: 98*10^-3 Henrios
+# Capacitancia: 94*10^-5 Faradios
+# Resistencia: 689 Ohmnios
+# N. vueltas: 3000
+# Calibre Cable / Diámetro: AGW 38 / 0.102 * 10^-6 m^2
+# ----------------------------
+# Parámetros de Construcción:
+# Bobina Pequeña:
+# Masa del solenoide amrado: 44*10^-3 Kg
+# Radio del solenoide (r_p): 5 *10^-3 m
+# Altura del solenoide (h_p): 36 *10^-3 m
+# Grosor de la capa de PLA (e_p): 3 *10^-3 m
+# ----------------------------
+# Bobina Grande:
+# Masa del solenoide amrado: 73*10^-3 Kg
+# Radio del solenoide (r_p): 7 *10^-3 m
+# Altura del solenoide (h_p): 34 *10^-3 m
+# Grosor de la capa de PLA (e_p): 3 *10^-3 m
+# ----------------------------
+# Funciones de Fuerza para la mesa de vibraciones:
+# ----------------------------
+# Bobina Pequeña:
+# Modelo empírico de la aceleración de la mesa (obtenido experimentalmente)
+"""""
+                if 26 < self.omega_Hz < 30:
+                    aceleracion_G = np.abs(
+                        3.5 * 2.087 / ((self.omega_Hz - 28.45) ** 2 + 2.087)
+                    )
+                elif 8 < self.omega_Hz < 12:
+                    aceleracion_G = np.abs(
+                        2.84 * 0.026 / ((self.omega_Hz - 10.33) ** 2 + 0.026)
+                    )
+                else:
+                    aceleracion_G = np.abs(2.1e-3 * self.omega_Hz**2)
+                aceleracion = aceleracion_G * 9.81
+                self.F_0 = m_vibrante * aceleracion  
+""" ""
+# ----------------------------
+# Bobina Grande:
+# Modelo empírico de la aceleración de la mesa (obtenido experimentalmente)
+"""""
+                if 26 < self.omega_Hz < 30:
+                    aceleracion_G = np.abs(
+                        35 * 2.087 / ((self.omega_Hz - 28.45) ** 2 + 2.087)
+                    )
+                elif 8 < self.omega_Hz < 12:
+                    aceleracion_G = np.abs(
+                        28.4 * 0.026 / ((self.omega_Hz - 10.33) ** 2 + 0.026)
+                    )
+                else:
+                    aceleracion_G = np.abs(21e-3 * self.omega_Hz**2)
+                aceleracion = aceleracion_G * 9.81
+                self.F_0 = m_vibrante * aceleracion  
+""" ""
 
 
 @dataclass
@@ -122,9 +184,10 @@ class SectionParams:
     c: float = 2  # Coeficiente de amortiguamiento (Kg/s) - valor por defecto
     m: float = 7 * (1e-3)  # Masa oscilante (Kg)
     k: float = 272  # Constante elástica (N/m)
-    m_mag: float = 12.33e-03  # Momento magnético (T)
+    m_mag: float = 13.33e-03  # Momento magnético (A*m^2)
     m_sis: float = 48.6 * (1e-3)  # Masa total del sismómetro (Kg)
     m_mes: float = 4 * (1e-3)  # Masa vibrante de la mesa (Kg)
+    m_tornillo: float = 11 * (1e-3)  # Masa del tornillo de ajuste (kg)
     factor_amplificacion: float = 8.219  # Ganancia del amplificador
     subida_voltaje: float = 0  # Offset del ADC (voltios)
     temp: float = 299.15  # Temperatura ambiente (K)
@@ -310,7 +373,9 @@ class SectionParams:
                     "¿La amplitud es directa (1) o se calcula en base a la frecuencia(2)?: "
                 )
             )
-            m_vibrante = self.m_sis + self.m_mes  # Masa total vibrante
+            m_vibrante = (
+                self.m_sis + self.m_mes + self.m_tornillo
+            )  # Masa total vibrante
             if amplitud == 1:
                 self.Y_0 = 7e-3  # Amplitud conocida (m)
                 self.F_0 = m_vibrante * self.Y_0 * (self.omega**2)  # Fuerza = m·a
@@ -318,14 +383,14 @@ class SectionParams:
                 # Modelo empírico de la aceleración de la mesa (obtenido experimentalmente)
                 if 26 < self.omega_Hz < 30:
                     aceleracion_G = np.abs(
-                        35 * 2.087 / ((self.omega_Hz - 28.45) ** 2 + 2.087)
+                        0.5 * 2.087 / ((self.omega_Hz - 28.45) ** 2 + 2.087)
                     )
                 elif 8 < self.omega_Hz < 12:
                     aceleracion_G = np.abs(
-                        28.4 * 0.026 / ((self.omega_Hz - 10.33) ** 2 + 0.026)
+                        2.84 * 0.026 / ((self.omega_Hz - 10.33) ** 2 + 0.026)
                     )
                 else:
-                    aceleracion_G = np.abs(21e-3 * self.omega_Hz**2)
+                    aceleracion_G = np.abs(2.1e-3 * self.omega_Hz**2)
                 aceleracion = aceleracion_G * 9.81
                 self.F_0 = m_vibrante * aceleracion
             else:
