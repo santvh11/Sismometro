@@ -98,8 +98,8 @@ while True:
 # Ambos son de Neodimio N35
 # Masa del imán de la bobina pequeña: 1
 # Masa del imán de la bobina grande: 3,1
-# Escalar de momento magnético del imán de la bobina pequeña: 63.23e-03
-# Escalar de momento magnético del imán de la bobina grande: 13.33e-03
+# Escalar de momento magnético del imán de la bobina pequeña: 25.23e*(1e-2)
+# Escalar de momento magnético del imán de la bobina grande: 17.33e*(1e-2)
 # -------------------------------------------------------------------
 # Constantes Elásticas
 # 1.5*(1e-3) Kg (resorte bobina grande)
@@ -143,34 +143,34 @@ while True:
 # Ajustados por parámetros lorentzianos de picos
 """""
 #Primer Pico
-    Lorentz_a_1:float = 5.766
+    Lorentz_a_1:float = 5.766*(1e-1)
     Lorentz_b_1:float = 3.150
     Lorentz_c_1:float = 2.993
 
     #Segundo Pico
-    Lorentz_a_2:float = 2.622
+    Lorentz_a_2:float = 2.622*(1e-1)
     Lorentz_b_2:float = 5.574*(1e-1)
     Lorentz_c_2:float = 8.964
 
     #Valle
-    Lorentz_k:float = 6.727*(1e-5)
+    Lorentz_k:float = 6.727*(1e-6)
 """ ""
 # ----------------------------
 # Bobina Pequeña:
 # Ajustados por parámetros lorentzianos de picos
 """"
 #Primer Pico
-    Lorentz_a_1:float = 9.368
+    Lorentz_a_1:float = 9.368*(1e-1)
     Lorentz_b_1:float = 3.196
     Lorentz_c_1:float = 2.993
 
     #Segundo Pico
-    Lorentz_a_2:float = 4.257
+    Lorentz_a_2:float = 4.257*(1e-1)
     Lorentz_b_2:float = 5.581*(1e-1)
     Lorentz_c_2:float = 8.964
 
     #Valle
-    Lorentz_k:float = 6.715*(1e-5)
+    Lorentz_k:float = 6.715*(1e-6)
 """
 
 
@@ -185,7 +185,7 @@ class SectionParams:
     c: float = 2  # Coeficiente de amortiguamiento (Kg/s) - valor por defecto
     m: float = 3.4 * (1e-3)  # Masa oscilante (Kg)
     k: float = 112  # Constante elástica (N/m)
-    m_mag: float = 13.33e-03  # Momento magnético (A*m^2)
+    m_mag: float = 17.33 * (1e-2)  # Momento magnético (A*m^2)
     m_sis: float = 73 * (1e-3)  # Masa total del sismómetro (Kg)
     m_mes: float = 4 * (1e-3)  # Masa vibrante de la mesa (Kg)
     m_tornillo: float = 11 * (1e-3)  # Masa del tornillo de ajuste (kg)
@@ -211,11 +211,11 @@ class SectionParams:
     # Dimensiones del contenedor y solenoide
     e_sub_p: float = 3 * (1e-3)  # Espesor del contenedor de PLA (m)
     h_sub_p: float = 34 * (1e-3)  # Altura del contenedor (m)
-    r_sub_p: float = 14 * (1e-3)  # Radio del contenedor (m)
+    r_sub_p: float = 7 * (1e-3)  # Radio del contenedor (m)
     h_sub_f: float = 34 * (1e-3)  # Altura del fluido (m)
     g_sub_ecs: float = 0.015 * (1e-3)  # Grosor del esmalte (m)
     e_sub_cs: float = 0.102 * (1e-3)  # Diámetro del cable del solenoide (m)
-    N_sub_c_total: float = 30000  # Número total de vueltas
+    N_sub_c_total: float = 3000  # Número total de vueltas
 
     # Propiedades de fluidos (glicerina)
     rho_0: float = 1273.3  # Densidad a 0°C (kg/m³)
@@ -253,17 +253,17 @@ class SectionParams:
     # Parámetros Lorentzianos para la Fuerza de la mesa
 
     # Primer Pico
-    Lorentz_a_1: float = 5.766
+    Lorentz_a_1: float = 5.766 * (1e-1)
     Lorentz_b_1: float = 3.150
     Lorentz_c_1: float = 2.993
 
     # Segundo Pico
-    Lorentz_a_2: float = 2.622
+    Lorentz_a_2: float = 2.622 * (1e-1)
     Lorentz_b_2: float = 5.574 * (1e-1)
     Lorentz_c_2: float = 8.964
 
     # Valle
-    Lorentz_k: float = 6.727 * (1e-5)
+    Lorentz_k: float = 6.727 * (1e-6)
 
     # ---------------------------------------------------------------
     # Parámetros de segundo orden (se calculan automáticamente)
