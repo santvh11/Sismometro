@@ -143,12 +143,12 @@ while True:
 # Ajustados por parámetros lorentzianos de picos
 """""
 #Primer Pico
-    Lorentz_a_1:float = 5.766*(1e+2)
+    Lorentz_a_1:float = 5.766
     Lorentz_b_1:float = 3.150
     Lorentz_c_1:float = 2.993
 
     #Segundo Pico
-    Lorentz_a_2:float = 2.622*(1e+2)
+    Lorentz_a_2:float = 2.622
     Lorentz_b_2:float = 5.574*(1e-1)
     Lorentz_c_2:float = 8.964
 
@@ -160,12 +160,12 @@ while True:
 # Ajustados por parámetros lorentzianos de picos
 """"
 #Primer Pico
-    Lorentz_a_1:float = 9.368*(1e+2)
+    Lorentz_a_1:float = 9.368
     Lorentz_b_1:float = 3.196
     Lorentz_c_1:float = 2.993
 
     #Segundo Pico
-    Lorentz_a_2:float = 4.257*(1e+2)
+    Lorentz_a_2:float = 4.257
     Lorentz_b_2:float = 5.581*(1e-1)
     Lorentz_c_2:float = 8.964
 
@@ -211,11 +211,11 @@ class SectionParams:
     # Dimensiones del contenedor y solenoide
     e_sub_p: float = 3 * (1e-3)  # Espesor del contenedor de PLA (m)
     h_sub_p: float = 34 * (1e-3)  # Altura del contenedor (m)
-    r_sub_p: float = 10 * (1e-3)  # Radio del contenedor (m)
+    r_sub_p: float = 14 * (1e-3)  # Radio del contenedor (m)
     h_sub_f: float = 34 * (1e-3)  # Altura del fluido (m)
     g_sub_ecs: float = 0.015 * (1e-3)  # Grosor del esmalte (m)
-    e_sub_cs: float = 0.079 * (1e-3)  # Diámetro del cable del solenoide (m)
-    N_sub_c_total: float = 3000  # Número total de vueltas
+    e_sub_cs: float = 0.102 * (1e-3)  # Diámetro del cable del solenoide (m)
+    N_sub_c_total: float = 30000  # Número total de vueltas
 
     # Propiedades de fluidos (glicerina)
     rho_0: float = 1273.3  # Densidad a 0°C (kg/m³)
@@ -253,12 +253,12 @@ class SectionParams:
     # Parámetros Lorentzianos para la Fuerza de la mesa
 
     # Primer Pico
-    Lorentz_a_1: float = 5.766 * (1e2)
+    Lorentz_a_1: float = 5.766
     Lorentz_b_1: float = 3.150
     Lorentz_c_1: float = 2.993
 
     # Segundo Pico
-    Lorentz_a_2: float = 2.622 * (1e2)
+    Lorentz_a_2: float = 2.622
     Lorentz_b_2: float = 5.574 * (1e-1)
     Lorentz_c_2: float = 8.964
 
@@ -519,16 +519,18 @@ def Factores_Acople(params: SectionParams) -> tuple[float, float]:
     m_mag = params.m_mag
     e_sub_cs = params.e_sub_cs
     N_sub_cs_total = params.N_sub_c_total
+    h_sub_p = params.h_sub_p
 
     constantes_magneticas = (0.25 * m_mag * mu_sub_cero) / np.pi
     Radio_total = e_sub_p + r_sub_p
-    Paso = e_sub_cs * 0.5 / np.pi
+    Paso = (h_sub_p * 0.5) / (np.pi * N_sub_cs_total)
     Integral_linea = (1 / Radio_total**3) - (
-        1 / (Radio_total**2 + (Paso * 2 * np.pi + N_sub_cs_total) ** 2) ** (3 / 2)
+        1
+        / (np.sqrt(((Radio_total**2) + (Paso * 2 * np.pi * N_sub_cs_total) ** 2))) ** 3
     )
     G_sub_A = (constantes_magneticas * 3 * Radio_total**2 / Paso) * Integral_linea
-    G_sub_L = (constantes_magneticas * Radio_total) / (
-        Paso * (Radio_total**2 + (4 * np.pi * Paso) ** 2) ** 3
+    G_sub_L = (constantes_magneticas * Radio_total**2) / (
+        Paso * (np.sqrt(Radio_total**2 + (2 * np.pi * Paso * N_sub_cs_total) ** 2)) ** 3
     )
     return G_sub_L, G_sub_A
 
@@ -610,7 +612,7 @@ def Solver(
                 [0, 1, 0, 0],
                 [-k / m, -c / m, 0, -G_sub_L / m],
                 [0, 0, 0, 1],
-                [0, -G_sub_A / L, -1 / (L * C), -R / L],
+                [0, G_sub_A / L, -1 / (L * C), -R / L],
             ]
         )
         eigenvalues, eigenvectors = np.linalg.eig(A)
