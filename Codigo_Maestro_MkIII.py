@@ -149,7 +149,7 @@ while True:
 
     #Segundo Pico
     Lorentz_a_2:float = 2.622*(1e+2)
-    Lorentz_b_2:float = 5.574
+    Lorentz_b_2:float = 5.574*(1e-1)
     Lorentz_c_2:float = 8.964
 
     #Valle
@@ -166,7 +166,7 @@ while True:
 
     #Segundo Pico
     Lorentz_a_2:float = 4.257*(1e+2)
-    Lorentz_b_2:float = 5.581
+    Lorentz_b_2:float = 5.581*(1e-1)
     Lorentz_c_2:float = 8.964
 
     #Valle
@@ -259,7 +259,7 @@ class SectionParams:
 
     # Segundo Pico
     Lorentz_a_2: float = 2.622 * (1e2)
-    Lorentz_b_2: float = 5.574
+    Lorentz_b_2: float = 5.574 * (1e-1)
     Lorentz_c_2: float = 8.964
 
     # Valle
