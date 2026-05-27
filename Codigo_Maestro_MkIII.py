@@ -1174,12 +1174,11 @@ def Solver(
 # ===================================================================
 if __name__ == "__main__":
     print("\n--- INICIALIZANDO PARÁMETROS DEL SISMÓMETRO ---")
-    parametros = SectionParams()
+    # 'params' es el diccionario de tipo SismometroParamsDict definido previamente
+    parametros = params
 
     print("\n--- INICIANDO INTEGRAL CAMPO MAGNETICO ---")
-    Factores_Acople(parametros)  # Solo para precalcular (opcional)
+    Factores_Acople(parametros)
 
     print("\n--- INICIANDO SOLVER Y GRÁFICAS ---")
-    # ¡OJO! El orden correcto de los argumentos es:
-    # modelo_mk1, modelo_mk2, simular, datos_descarga, experimento_c, params
     Solver(modelo_mk1, modelo_mk2, simular, datos_descarga, experimento_c, parametros)
