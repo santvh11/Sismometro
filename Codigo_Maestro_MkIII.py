@@ -140,37 +140,38 @@ while True:
 # ----------------------------
 # Bobina Pequeña:
 # Modelo empírico de la aceleración de la mesa (obtenido experimentalmente)
+# Ajustados por parámetros lorentzianos de picos
 """""
-                if 26 < self.omega_Hz < 30:
-                    aceleracion_G = np.abs(
-                        3.5 * 2.087 / ((self.omega_Hz - 28.45) ** 2 + 2.087)
-                    )
-                elif 8 < self.omega_Hz < 12:
-                    aceleracion_G = np.abs(
-                        2.84 * 0.026 / ((self.omega_Hz - 10.33) ** 2 + 0.026)
-                    )
-                else:
-                    aceleracion_G = np.abs(2.1e-3 * self.omega_Hz**2)
-                aceleracion = aceleracion_G * 9.81
-                self.F_0 = m_vibrante * aceleracion  
+#Primer Pico
+    Lorentz_a_1:float = 5.766
+    Lorentz_b_1:float = 3.150
+    Lorentz_c_1:float = 2.993
+
+    #Segundo Pico
+    Lorentz_a_2:float = 5.766
+    Lorentz_b_2:float = 5.574
+    Lorentz_c_2:float = 8.964
+
+    #Valle
+    Lorentz_k:float = 6.727*(1e-5)
 """ ""
 # ----------------------------
 # Bobina Grande:
-# Modelo empírico de la aceleración de la mesa (obtenido experimentalmente)
-"""""
-                if 26 < self.omega_Hz < 30:
-                    aceleracion_G = np.abs(
-                        35 * 2.087 / ((self.omega_Hz - 28.45) ** 2 + 2.087)
-                    )
-                elif 8 < self.omega_Hz < 12:
-                    aceleracion_G = np.abs(
-                        28.4 * 0.026 / ((self.omega_Hz - 10.33) ** 2 + 0.026)
-                    )
-                else:
-                    aceleracion_G = np.abs(21e-3 * self.omega_Hz**2)
-                aceleracion = aceleracion_G * 9.81
-                self.F_0 = m_vibrante * aceleracion  
-""" ""
+# Ajustados por parámetros lorentzianos de picos
+""""
+#Primer Pico
+    Lorentz_a_1:float = 9.368
+    Lorentz_b_1:float = 3.196
+    Lorentz_c_1:float = 2.993
+
+    #Segundo Pico
+    Lorentz_a_2:float = 9.368
+    Lorentz_b_2:float = 5.581
+    Lorentz_c_2:float = 8.964
+
+    #Valle
+    Lorentz_k:float = 6.715*(1e-5)
+"""
 
 
 @dataclass
@@ -248,6 +249,21 @@ class SectionParams:
     b: float = 0.5  # Tiempo final (s)
     puntos: int = 10000  # Número de puntos para simulación
     delta_t: int = 1  # Factor de submuestreo (cada delta_t puntos)
+
+    # Parámetros Lorentzianos para la Fuerza de la mesa
+
+    # Primer Pico
+    Lorentz_a_1: float = 5.766
+    Lorentz_b_1: float = 3.150
+    Lorentz_c_1: float = 2.993
+
+    # Segundo Pico
+    Lorentz_a_2: float = 5.766
+    Lorentz_b_2: float = 5.574
+    Lorentz_c_2: float = 8.964
+
+    # Valle
+    Lorentz_k: float = 6.727 * (1e-5)
 
     # ---------------------------------------------------------------
     # Parámetros de segundo orden (se calculan automáticamente)
@@ -381,16 +397,24 @@ class SectionParams:
                 self.F_0 = m_vibrante * self.Y_0 * (self.omega**2)  # Fuerza = m·a
             elif amplitud == 2:
                 # Modelo empírico de la aceleración de la mesa (obtenido experimentalmente)
-                if 26 < self.omega_Hz < 30:
-                    aceleracion_G = np.abs(
-                        0.5 * 2.087 / ((self.omega_Hz - 28.45) ** 2 + 2.087)
-                    )
-                elif 8 < self.omega_Hz < 12:
-                    aceleracion_G = np.abs(
-                        2.84 * 0.026 / ((self.omega_Hz - 10.33) ** 2 + 0.026)
-                    )
-                else:
-                    aceleracion_G = np.abs(2.1e-3 * self.omega_Hz**2)
+
+                aceleracion_G_pico_1 = np.abs(
+                    self.Lorentz_a_1
+                    * self.Lorentz_b_1
+                    / ((self.omega_Hz - self.Lorentz_c_1) ** 2 + self.Lorentz_b_1)
+                )
+
+                aceleracion_G_pico_2 = np.abs(
+                    self.Lorentz_a_2
+                    * self.Lorentz_b_2
+                    / ((self.omega_Hz - self.Lorentz_c_2) ** 2 + self.Lorentz_b_2)
+                )
+
+                aceleracion_G_valle = np.abs(self.Lorentz_k * self.omega_Hz**2)
+
+                aceleracion_G = (
+                    aceleracion_G_pico_1 + aceleracion_G_pico_2 + aceleracion_G_valle
+                )
                 aceleracion = aceleracion_G * 9.81
                 self.F_0 = m_vibrante * aceleracion
             else:
