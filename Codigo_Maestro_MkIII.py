@@ -248,7 +248,7 @@ class SectionParams:
     a: int = 0  # Tiempo inicial (s)
     b: float = 0.5  # Tiempo final (s)
     puntos: int = 10000  # Número de puntos para simulación
-    delta_t: int = 1  # Factor de submuestreo (cada delta_t puntos)
+    delta_t: int = 1  # Factor de submuestreo (cada delta_t puntos)H
 
     # Parámetros Lorentzianos para la Fuerza de la mesa
 
