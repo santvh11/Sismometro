@@ -96,7 +96,7 @@ while True:
 # -------------------------------------------------------------------
 # Imánes:
 # Ambos son de Neodimio N35
-# Masa del imán de la bobina pequeña:
+# Masa del imán de la bobina pequeña: 1
 # Masa del imán de la bobina grande: 3,1
 # Escalar de momento magnético del imán de la bobina pequeña: 63.23e-03
 # Escalar de momento magnético del imán de la bobina grande: 13.33e-03
@@ -138,17 +138,17 @@ while True:
 # ----------------------------
 # Funciones de Fuerza para la mesa de vibraciones:
 # ----------------------------
-# Bobina Pequeña:
+# Bobina Grande:
 # Modelo empírico de la aceleración de la mesa (obtenido experimentalmente)
 # Ajustados por parámetros lorentzianos de picos
 """""
 #Primer Pico
-    Lorentz_a_1:float = 5.766
+    Lorentz_a_1:float = 5.766*(1e+2)
     Lorentz_b_1:float = 3.150
     Lorentz_c_1:float = 2.993
 
     #Segundo Pico
-    Lorentz_a_2:float = 5.766
+    Lorentz_a_2:float = 2.622*(1e+2)
     Lorentz_b_2:float = 5.574
     Lorentz_c_2:float = 8.964
 
@@ -156,16 +156,16 @@ while True:
     Lorentz_k:float = 6.727*(1e-5)
 """ ""
 # ----------------------------
-# Bobina Grande:
+# Bobina Pequeña:
 # Ajustados por parámetros lorentzianos de picos
 """"
 #Primer Pico
-    Lorentz_a_1:float = 9.368
+    Lorentz_a_1:float = 9.368*(1e+2)
     Lorentz_b_1:float = 3.196
     Lorentz_c_1:float = 2.993
 
     #Segundo Pico
-    Lorentz_a_2:float = 9.368
+    Lorentz_a_2:float = 4.257*(1e+2)
     Lorentz_b_2:float = 5.581
     Lorentz_c_2:float = 8.964
 
@@ -179,14 +179,14 @@ class SectionParams:
     # ---------------------------------------------------------------
     # Parámetros de primer orden (ingresados directamente por el usuario)
     # ---------------------------------------------------------------
-    R: float = 383.1  # Resistencia total (Ohm)
-    L: float = 36.7 * (1e-6)  # Inductancia (H)
-    C: float = 0.07 * (1e-6)  # Capacitancia (F)
+    R: float = 482  # Resistencia total (Ohm)
+    L: float = 98 * (1e-3)  # Inductancia (H)
+    C: float = 94 * (1e-5)  # Capacitancia (F)
     c: float = 2  # Coeficiente de amortiguamiento (Kg/s) - valor por defecto
-    m: float = 7 * (1e-3)  # Masa oscilante (Kg)
-    k: float = 272  # Constante elástica (N/m)
+    m: float = 3.4 * (1e-3)  # Masa oscilante (Kg)
+    k: float = 112  # Constante elástica (N/m)
     m_mag: float = 13.33e-03  # Momento magnético (A*m^2)
-    m_sis: float = 48.6 * (1e-3)  # Masa total del sismómetro (Kg)
+    m_sis: float = 73 * (1e-3)  # Masa total del sismómetro (Kg)
     m_mes: float = 4 * (1e-3)  # Masa vibrante de la mesa (Kg)
     m_tornillo: float = 11 * (1e-3)  # Masa del tornillo de ajuste (kg)
     factor_amplificacion: float = 8.219  # Ganancia del amplificador
@@ -205,17 +205,17 @@ class SectionParams:
     R_sub_e: float = 9.5 * (1e-3)  # Radio de la esfera (m)
     L_cilindro: float = 10 * (1e-3)  # Longitud del cilindro (resorte) (m)
     L_libre_iman: float = 135 * (1e-3)  # Longitud libre del imán (m)
-    omega_Hz: float = 25  # Frecuencia de excitación (Hz)
+    omega_Hz: float = 10  # Frecuencia de excitación (Hz)
     omega = omega_Hz * 2 * np.pi  # Frecuencia angular (rad/s)
 
     # Dimensiones del contenedor y solenoide
     e_sub_p: float = 3 * (1e-3)  # Espesor del contenedor de PLA (m)
     h_sub_p: float = 34 * (1e-3)  # Altura del contenedor (m)
-    r_sub_p: float = 14 * (1e-3)  # Radio del contenedor (m)
+    r_sub_p: float = 10 * (1e-3)  # Radio del contenedor (m)
     h_sub_f: float = 34 * (1e-3)  # Altura del fluido (m)
     g_sub_ecs: float = 0.015 * (1e-3)  # Grosor del esmalte (m)
     e_sub_cs: float = 0.079 * (1e-3)  # Diámetro del cable del solenoide (m)
-    N_sub_c_total: float = 2700  # Número total de vueltas
+    N_sub_c_total: float = 3000  # Número total de vueltas
 
     # Propiedades de fluidos (glicerina)
     rho_0: float = 1273.3  # Densidad a 0°C (kg/m³)
@@ -253,12 +253,12 @@ class SectionParams:
     # Parámetros Lorentzianos para la Fuerza de la mesa
 
     # Primer Pico
-    Lorentz_a_1: float = 5.766
+    Lorentz_a_1: float = 5.766 * (1e2)
     Lorentz_b_1: float = 3.150
     Lorentz_c_1: float = 2.993
 
     # Segundo Pico
-    Lorentz_a_2: float = 5.766
+    Lorentz_a_2: float = 2.622 * (1e2)
     Lorentz_b_2: float = 5.574
     Lorentz_c_2: float = 8.964
 
