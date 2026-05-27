@@ -189,8 +189,8 @@ class SectionParams:
     m_sis: float = 73 * (1e-3)  # Masa total del sismómetro (Kg)
     m_mes: float = 4 * (1e-3)  # Masa vibrante de la mesa (Kg)
     m_tornillo: float = 11 * (1e-3)  # Masa del tornillo de ajuste (kg)
-    factor_amplificacion: float = 8.219  # Ganancia del amplificador
-    subida_voltaje: float = 0  # Offset del ADC (voltios)
+    factor_amplificacion: float = 3.1  # Ganancia del amplificador
+    subida_voltaje: float = 0  # Offset del ADC (vo3ltios)
     temp: float = 299.15  # Temperatura ambiente (K)
 
     # Condiciones iniciales
@@ -1003,95 +1003,99 @@ def Solver(
             print(f"Guardando datos en: {nombre_archivo}")
             print("Presione Ctrl+C en la consola para detener la captura.")
             print("=======================================================\n")
+
+            archivo_csv = None
+            escritor_csv = None
             try:
-                with open(nombre_archivo, mode="w", newline="") as archivo_csv:
-                    escritor_csv = csv.writer(archivo_csv)
-                    escritor_csv.writerow(
-                        [
-                            "Marca_de_Tiempo",
-                            "FEM_Real_Pico_(V)",
-                            "Velocidad_Max_(m/s)",
-                            "Posicion_Max_(m)",
-                            "Frec_Dominante_FFT_(Hz)",
-                            "Amplitud_Max_FFT",
-                        ]
-                    )
-                    ultimo_log = time.time()
-                    while True:
-                        # Control de timeout también en modo guardado
+                archivo_csv = open(nombre_archivo, mode="w", newline="")
+                escritor_csv = csv.writer(archivo_csv)
+                escritor_csv.writerow(
+                    [
+                        "Marca_de_Tiempo",
+                        "FEM_Real_Pico_(V)",
+                        "Velocidad_Max_(m/s)",
+                        "Posicion_Max_(m)",
+                        "Frec_Dominante_FFT_(Hz)",
+                        "Amplitud_Max_FFT",
+                    ]
+                )
+                archivo_csv.flush()  # Forzar escritura inicial
+
+                ultimo_log = time.time()
+                while True:
+                    if not estado["conexion_activa"]:
+                        break
+                    while esp32.in_waiting > 0:
+                        try:
+                            linea = (
+                                esp32.readline()
+                                .decode("utf-8", errors="ignore")
+                                .strip()
+                            )
+                            if "," in linea:
+                                t_micros_str, v_str = linea.split(",")
+                                t_micros = int(t_micros_str)
+                                v_crudo = float(v_str)
+                                if estado["tiempo_inicial"] is None:
+                                    estado["tiempo_inicial"] = t_micros
+                                t_segundos = (t_micros - estado["tiempo_inicial"]) / 1e6
+                                buffer_t.append(t_segundos)
+                                buffer_v.append(v_crudo)
+                                estado["ultima_actualizacion"] = time.time()
+                        except Exception:
+                            pass
+                    # Verificar timeout
+                    if time.time() - estado["ultima_actualizacion"] > TIMEOUT_SEGUNDOS:
+                        reiniciar_conexion()
                         if not estado["conexion_activa"]:
                             break
-                        while esp32.in_waiting > 0:
-                            try:
-                                linea = (
-                                    esp32.readline()
-                                    .decode("utf-8", errors="ignore")
-                                    .strip()
-                                )
-                                if "," in linea:
-                                    t_micros_str, v_str = linea.split(",")
-                                    t_micros = int(t_micros_str)
-                                    v_crudo = float(v_str)
-                                    if estado["tiempo_inicial"] is None:
-                                        estado["tiempo_inicial"] = t_micros
-                                    t_segundos = (
-                                        t_micros - estado["tiempo_inicial"]
-                                    ) / 1e6
-                                    buffer_t.append(t_segundos)
-                                    buffer_v.append(v_crudo)
-                                    estado["ultima_actualizacion"] = time.time()
-                            except Exception:
-                                pass
-                        # Verificar timeout
-                        if (
-                            time.time() - estado["ultima_actualizacion"]
-                            > TIMEOUT_SEGUNDOS
-                        ):
-                            reiniciar_conexion()
-                            if not estado["conexion_activa"]:
-                                break
-                            else:
-                                continue
-                        # Procesar cada 0.1 segundos si hay ventana llena
-                        if (
-                            len(buffer_t) == TAMANO_VENTANA
-                            and (time.time() - ultimo_log) >= 0.1
-                        ):
-                            ultimo_log = time.time()
-                            t_arr = np.array(buffer_t)
-                            v_arr = np.array(buffer_v) - subida_voltaje
-                            v_filtrado = aplicar_filtros(t_arr, v_arr)
-                            v_real = v_filtrado / factor_amplificacion
-                            velocidad_real = -v_real / (G_sub_A * R_porcentaje)
-                            posicion_iman = cumulative_trapezoid(
-                                velocidad_real, t_arr, initial=0
-                            )
-                            N = TAMANO_VENTANA
-                            T_muestreo = 1.0 / FS
-                            yf = fft(v_real)
-                            xf = fftfreq(N, T_muestreo)[: N // 2]
-                            amplitud_fft = 2.0 / N * np.abs(yf[0 : N // 2])
-                            indice_max_fft = np.argmax(amplitud_fft)
-                            timestamp_log = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-                            escritor_csv.writerow(
-                                [
-                                    timestamp_log,
-                                    np.max(np.abs(v_real)),
-                                    np.max(np.abs(velocidad_real)),
-                                    np.max(np.abs(posicion_iman)),
-                                    xf[indice_max_fft],
-                                    amplitud_fft[indice_max_fft],
-                                ]
-                            )
+                        else:
+                            continue
+                    # Procesar cada 0.1 segundos si hay ventana llena
+                    if (
+                        len(buffer_t) == TAMANO_VENTANA
+                        and (time.time() - ultimo_log) >= 0.1
+                    ):
+                        ultimo_log = time.time()
+                        t_arr = np.array(buffer_t)
+                        v_arr = np.array(buffer_v) - subida_voltaje
+                        v_filtrado = aplicar_filtros(t_arr, v_arr)
+                        v_real = v_filtrado / factor_amplificacion
+                        velocidad_real = -v_real / (G_sub_A * R_porcentaje)
+                        posicion_iman = cumulative_trapezoid(
+                            velocidad_real, t_arr, initial=0
+                        )
+                        N = TAMANO_VENTANA
+                        T_muestreo = 1.0 / FS
+                        yf = fft(v_real)
+                        xf = fftfreq(N, T_muestreo)[: N // 2]
+                        amplitud_fft = 2.0 / N * np.abs(yf[0 : N // 2])
+                        indice_max_fft = np.argmax(amplitud_fft)
+                        timestamp_log = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                        escritor_csv.writerow(
+                            [
+                                timestamp_log,
+                                np.max(np.abs(v_real)),
+                                np.max(np.abs(velocidad_real)),
+                                np.max(np.abs(posicion_iman)),
+                                xf[indice_max_fft],
+                                amplitud_fft[indice_max_fft],
+                            ]
+                        )
+                        archivo_csv.flush()  # ¡Importante! Forzar escritura a disco periódicamente
             except KeyboardInterrupt:
-                print("\nCaptura detenida por el usuario. Archivo guardado.")
-                esp32.close()
+                print("\nCaptura detenida por el usuario. Finalizando...")
             except SystemExit:
                 pass
             finally:
+                # Cerrar archivo y puerto serie de forma segura
+                if archivo_csv:
+                    archivo_csv.flush()
+                    archivo_csv.close()
+                    print(f"Archivo guardado: {nombre_archivo}")
                 if esp32 and esp32.is_open:
                     esp32.close()
-            return
+                return
 
         # -----------------------------------------------
         # SUB-MODO: VISUALIZACIÓN CON GRÁFICAS EN TIEMPO REAL
@@ -1283,7 +1287,9 @@ def Solver(
                     return tuple(elementos)
                 return ()
 
-            ani = animation.FuncAnimation(fig, actualizar, interval=30, blit=False)
+            ani = animation.FuncAnimation(
+                fig, actualizar, interval=30, blit=False, cache_frame_data=False
+            )
             plt.show()
             if esp32 and esp32.is_open:
                 esp32.close()
