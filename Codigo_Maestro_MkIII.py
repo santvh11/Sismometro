@@ -189,8 +189,8 @@ class SectionParams:
     m_sis: float = 73 * (1e-3)  # Masa total del sismómetro (Kg)
     m_mes: float = 4 * (1e-3)  # Masa vibrante de la mesa (Kg)
     m_tornillo: float = 11 * (1e-3)  # Masa del tornillo de ajuste (kg)
-    factor_amplificacion: float = 3.1  # Ganancia del amplificador
-    subida_voltaje: float = 0  # Offset del ADC (vo3ltios)
+    factor_amplificacion: float = 8.1  # Ganancia del amplificador
+    subida_voltaje: float = 1.03  # Offset del ADC (vo3ltios)
     temp: float = 299.15  # Temperatura ambiente (K)
 
     # Condiciones iniciales
@@ -207,6 +207,7 @@ class SectionParams:
     L_libre_iman: float = 135 * (1e-3)  # Longitud libre del imán (m)
     omega_Hz: float = 10  # Frecuencia de excitación (Hz)
     omega = omega_Hz * 2 * np.pi  # Frecuencia angular (rad/s)
+    omega_filtro: float = 5  # filtro para la frecuencia automático
 
     # Dimensiones del contenedor y solenoide
     e_sub_p: float = 3 * (1e-3)  # Espesor del contenedor de PLA (m)
@@ -583,6 +584,7 @@ def Solver(
     b = params.b
     factor_amplificacion = params.factor_amplificacion
     subida_voltaje = params.subida_voltaje
+    omega_filtro = params.omega_filtro
 
     # Impresión de parámetros relevantes
     print(f"masa estimada en :{m:.3e} Kg")
@@ -891,8 +893,8 @@ def Solver(
         BAUDIOS = 115200
         TAMANO_VENTANA = 512
         FS = 1000.0  # Frecuencia de muestreo supuesta (Hz)
-        FC_PASA_ALTAS = 0.5
-        FC_PASA_BAJAS = 40.0
+        FC_PASA_ALTAS = max(0.5, omega - omega_filtro)
+        FC_PASA_BAJAS = omega + omega_filtro
         TIMEOUT_SEGUNDOS = 4  # Segundos sin datos para reiniciar la conexión
         MAX_REINTENTOS = 3
 
@@ -1306,7 +1308,7 @@ def Solver(
 
         PUERTO = "COM3"
         BAUDIOS = 115200
-        FS = 900.0
+        FS = 1000.0
         UMBRAL_DISPARO = 0.05
         TIEMPO_CAPTURA = 3.0
 
