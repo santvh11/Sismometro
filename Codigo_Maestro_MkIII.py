@@ -207,6 +207,7 @@ class SectionParams:
     L_libre_iman: float = 135 * (1e-3)  # Longitud libre del imán (m)
     omega_Hz: float = 10  # Frecuencia de excitación (Hz)
     omega = omega_Hz * 2 * np.pi  # Frecuencia angular (rad/s)
+    omega_tolerancia: float = 5  # Rango de tolerancia para filtrado de frecuencias
 
     # Dimensiones del contenedor y solenoide
     e_sub_p: float = 3 * (1e-3)  # Espesor del contenedor de PLA (m)
@@ -235,6 +236,7 @@ class SectionParams:
     L_sub_c: float = 1 * (1e-2)  # Longitud cable conexión (m)
     R_sub_a: float = 1 * (1e8)  # Resistencia de entrada del amplificador (Ohm)
     R_extra: float = 1  # Resistencia añadida (Ohm)
+    umbral_voltaje = 0.020  # Margen de error de voltaje del LM-358
 
     # Constantes físicas
     epsilon_sub_cero: float = 8.854 * (1e-12)  # Permitividad del vacío (F/m)
@@ -583,6 +585,9 @@ def Solver(
     b = params.b
     factor_amplificacion = params.factor_amplificacion
     subida_voltaje = params.subida_voltaje
+    omega_Hz = params.omega_Hz
+    omega_tolerancia = params.omega_tolerancia
+    umbral_voltaje = params.umbral_voltaje
 
     # Impresión de parámetros relevantes
     print(f"masa estimada en :{m:.3e} Kg")
@@ -891,17 +896,30 @@ def Solver(
         BAUDIOS = 115200
         TAMANO_VENTANA = 512
         FS = 1000.0  # Frecuencia de muestreo supuesta (Hz)
-        FC_PASA_ALTAS = 0.5
-        FC_PASA_BAJAS = 40.0
-        TIMEOUT_SEGUNDOS = 4  # Segundos sin datos para reiniciar la conexión
+
+        # Parámetros para filtros adaptativos
+        MARGEN_FILTRO = 5.0  # Hz por encima/debajo de la frecuencia de excitación
+        f_center = params.omega_Hz  # frecuencia de excitación actual (Hz)
+        FC_PASA_ALTAS = max(0.5, f_center - MARGEN_FILTRO)
+        FC_PASA_BAJAS = f_center + MARGEN_FILTRO
+        # Límite de Nyquist
+        if FC_PASA_BAJAS > FS / 2:
+            FC_PASA_BAJAS = FS / 2 - 1
+        print(
+            f"Filtros adaptados: pasa-altas = {FC_PASA_ALTAS:.1f} Hz, pasa-bajas = {FC_PASA_BAJAS:.1f} Hz"
+        )
+
+        # Umbral de voltaje para descartar ruido (20 mV pico a pico)
+        UMBRAL_VOLTAJE = 0.02  # voltios
+
+        TIMEOUT_SEGUNDOS = 4
         MAX_REINTENTOS = 3
 
-        # Opción de solo guardar sin gráficos (ahorro de recursos)
+        # Opción de solo guardar sin gráficos
         MODO_SOLO_GUARDAR = bool(
             input("¿Desea ver gráficas (Enter) o guardar datos (escribir algo): ")
         )
 
-        # Si se ven gráficas, seleccionar pestaña
         if not MODO_SOLO_GUARDAR:
             VISTA_SELECCIONADA = int(
                 input(
@@ -932,9 +950,7 @@ def Solver(
                     print(f"Reintentando en 2 segundos...")
                     time.sleep(2)
         if esp32 is None:
-            print(
-                "No se pudo conectar al ESP32 después de varios intentos. Saliendo del modo 3."
-            )
+            print("No se pudo conectar al ESP32. Saliendo del modo 3.")
             return
 
         # Buffers circulares
@@ -947,7 +963,7 @@ def Solver(
         }
 
         def aplicar_filtros(tiempo, voltaje):
-            """Filtro pasa-altas + pasa-bajas usando filtfilt para evitar desfase."""
+            """Filtro pasa-altas + pasa-bajas usando filtfilt (sin desfase)."""
             nyquist = 0.5 * FS
             b_altas, a_altas = butter(2, FC_PASA_ALTAS / nyquist, btype="high")
             b_bajas, a_bajas = butter(2, FC_PASA_BAJAS / nyquist, btype="low")
@@ -960,11 +976,7 @@ def Solver(
         # ---------------------------------------------------------------
         def reiniciar_conexion():
             nonlocal esp32, reintentos
-            print(
-                "\n⚠️  Sin datos durante {} segundos. Reintentando conexión...".format(
-                    TIMEOUT_SEGUNDOS
-                )
-            )
+            print(f"\n⚠️ Sin datos durante {TIMEOUT_SEGUNDOS} s. Reintentando...")
             try:
                 esp32.close()
             except:
@@ -974,7 +986,6 @@ def Solver(
             if reintentos < MAX_REINTENTOS:
                 esp32 = conectar_serial(PUERTO, BAUDIOS, reintentos + 1)
                 if esp32 is not None:
-                    # Limpiar buffers y estado
                     buffer_t.clear()
                     buffer_v.clear()
                     estado["tiempo_inicial"] = None
@@ -985,10 +996,9 @@ def Solver(
                     estado["conexion_activa"] = False
                     print("Fallo en la reconexión.")
             else:
-                print("Máximo de reintentos alcanzado. Cerrando modo de visualización.")
+                print("Máximo de reintentos alcanzado. Cerrando modo.")
                 estado["conexion_activa"] = False
                 plt.close("all")
-                # Salimos de la función Solver (opcional: podríamos solo salir del modo)
                 raise SystemExit("Se perdió la comunicación con el ESP32.")
 
         # -----------------------------------------------
@@ -1001,7 +1011,7 @@ def Solver(
             print("\n=======================================================")
             print("MODO LOGEO ACTIVO - VISUALIZACIÓN GRÁFICA APAGADA")
             print(f"Guardando datos en: {nombre_archivo}")
-            print("Presione Ctrl+C en la consola para detener la captura.")
+            print("Presione Ctrl+C para detener.")
             print("=======================================================\n")
             try:
                 with open(nombre_archivo, mode="w", newline="") as archivo_csv:
@@ -1018,7 +1028,6 @@ def Solver(
                     )
                     ultimo_log = time.time()
                     while True:
-                        # Control de timeout también en modo guardado
                         if not estado["conexion_activa"]:
                             break
                         while esp32.in_waiting > 0:
@@ -1042,7 +1051,7 @@ def Solver(
                                     estado["ultima_actualizacion"] = time.time()
                             except Exception:
                                 pass
-                        # Verificar timeout
+                        # Timeout
                         if (
                             time.time() - estado["ultima_actualizacion"]
                             > TIMEOUT_SEGUNDOS
@@ -1052,7 +1061,7 @@ def Solver(
                                 break
                             else:
                                 continue
-                        # Procesar cada 0.1 segundos si hay ventana llena
+                        # Procesar cada 0.1 s si la ventana está llena
                         if (
                             len(buffer_t) == TAMANO_VENTANA
                             and (time.time() - ultimo_log) >= 0.1
@@ -1062,6 +1071,19 @@ def Solver(
                             v_arr = np.array(buffer_v) - subida_voltaje
                             v_filtrado = aplicar_filtros(t_arr, v_arr)
                             v_real = v_filtrado / factor_amplificacion
+                            # Umbral: si la señal es muy pequeña, se guardan ceros
+                            if np.max(np.abs(v_real)) < UMBRAL_VOLTAJE:
+                                escritor_csv.writerow(
+                                    [
+                                        datetime.now().strftime("%H:%M:%S.%f")[:-3],
+                                        0.0,
+                                        0.0,
+                                        0.0,
+                                        0.0,
+                                        0.0,
+                                    ]
+                                )
+                                continue
                             velocidad_real = -v_real / (G_sub_A * R_porcentaje)
                             posicion_iman = cumulative_trapezoid(
                                 velocidad_real, t_arr, initial=0
@@ -1085,7 +1107,6 @@ def Solver(
                             )
             except KeyboardInterrupt:
                 print("\nCaptura detenida por el usuario. Archivo guardado.")
-                esp32.close()
             except SystemExit:
                 pass
             finally:
@@ -1097,7 +1118,7 @@ def Solver(
         # SUB-MODO: VISUALIZACIÓN CON GRÁFICAS EN TIEMPO REAL
         # -----------------------------------------------
         else:
-            # Configuración de los subplots según la vista seleccionada
+            # Configuración de subplots según la vista seleccionada
             if VISTA_SELECCIONADA == 0:
                 fig, axs = plt.subplots(4, 1, figsize=(12, 11))
                 ax_fem, ax_vel, ax_pos, ax_fft = axs
@@ -1116,7 +1137,7 @@ def Solver(
                 f"DAQ Sismómetro EAFIT - Vista Modo {VISTA_SELECCIONADA}"
             )
 
-            # Inicialización de líneas según la vista
+            # Inicialización de líneas y textos
             if VISTA_SELECCIONADA in [0, 1]:
                 (linea_fem_cruda,) = ax_fem.plot(
                     [], [], lw=1.5, color="purple", label="FEM Amplificada", alpha=0.7
@@ -1128,7 +1149,6 @@ def Solver(
                 ax_fem.set_ylabel("Voltaje (V)")
                 ax_fem.grid(True)
                 ax_fem.legend(loc="upper right")
-                # Texto de timeout
                 text_timeout = ax_fem.text(
                     0.5,
                     0.95,
@@ -1201,7 +1221,6 @@ def Solver(
             plt.tight_layout()
 
             def actualizar(frame):
-                # Leer datos del puerto mientras haya
                 while esp32.in_waiting > 0:
                     try:
                         linea = (
@@ -1220,20 +1239,16 @@ def Solver(
                     except Exception:
                         pass
 
-                # Verificar timeout de recepción de datos
+                # Timeout y reconexión
                 if time.time() - estado["ultima_actualizacion"] > TIMEOUT_SEGUNDOS:
                     reiniciar_conexion()
                     if not estado["conexion_activa"]:
-                        # Cerrar figura y salir
                         plt.close(fig)
                         return ()
                     else:
-                        # Mostrar mensaje de espera en la gráfica
                         if "text_timeout" in locals():
                             text_timeout.set_text("Esperando datos... Reintentando")
                         return ()
-
-                # Limpiar mensaje de timeout si ya hay datos
                 if "text_timeout" in locals():
                     text_timeout.set_text("")
 
@@ -1242,6 +1257,10 @@ def Solver(
                     v_arr = np.array(buffer_v) - subida_voltaje
                     v_filtrado = aplicar_filtros(t_arr, v_arr)
                     v_real = v_filtrado / factor_amplificacion
+
+                    # Umbral para no dibujar ruido
+                    if np.max(np.abs(v_real)) < UMBRAL_VOLTAJE:
+                        return ()
 
                     if VISTA_SELECCIONADA in [0, 2, 3]:
                         velocidad_real = -v_real / (G_sub_A * R_porcentaje)
@@ -1283,7 +1302,9 @@ def Solver(
                     return tuple(elementos)
                 return ()
 
-            ani = animation.FuncAnimation(fig, actualizar, interval=30, blit=False)
+            ani = animation.FuncAnimation(
+                fig, actualizar, interval=30, blit=False, save_count=100
+            )
             plt.show()
             if esp32 and esp32.is_open:
                 esp32.close()
@@ -1300,13 +1321,27 @@ def Solver(
 
         PUERTO = "COM3"
         BAUDIOS = 115200
-        FS = 900.0
-        UMBRAL_DISPARO = 0.05
-        TIEMPO_CAPTURA = 3.0
+        FS = 1000.0  # Frecuencia de muestreo (Hz) consistente con ESP32
+        UMBRAL_DISPARO = 0.05  # Voltaje de disparo (sobre el offset)
+        TIEMPO_CAPTURA = 3.0  # Segundos de registro
 
-        # -----------------------------------------------------------------
-        # Función de captura de datos (común a ambos métodos)
-        # -----------------------------------------------------------------
+        # --- Filtros adaptativos centrados en la frecuencia de excitación ---
+        MARGEN_FILTRO = 5.0  # Hz
+        f_center = params.omega_Hz  # frecuencia de excitación actual (Hz)
+        FC_PASA_ALTAS = max(0.5, f_center - MARGEN_FILTRO)
+        FC_PASA_BAJAS = f_center + MARGEN_FILTRO
+        if FC_PASA_BAJAS > FS / 2:
+            FC_PASA_BAJAS = FS / 2 - 1
+        print(
+            f"Filtros adaptados: pasa-altas = {FC_PASA_ALTAS:.1f} Hz, pasa-bajas = {FC_PASA_BAJAS:.1f} Hz"
+        )
+
+        # Umbral para descartar ruido (20 mV pico)
+        UMBRAL_VOLTAJE = 0.02  # voltios
+
+        # ---------------------------------------------------------------
+        # Función de captura de datos con filtrado y umbral
+        # ---------------------------------------------------------------
         def capturar_evento_sismico():
             print(f"Conectando a {PUERTO}...")
             try:
@@ -1314,6 +1349,11 @@ def Solver(
             except Exception as e:
                 print(f"Error de conexión: {e}")
                 return None, None
+
+            # Diseño de filtros digitales (usando las frecuencias adaptativas)
+            nyquist = 0.5 * FS
+            b_altas, a_altas = butter(2, FC_PASA_ALTAS / nyquist, btype="high")
+            b_bajas, a_bajas = butter(2, FC_PASA_BAJAS / nyquist, btype="low")
 
             pre_trigger = 100
             historial_t = collections.deque(maxlen=pre_trigger)
@@ -1333,29 +1373,50 @@ def Solver(
                             continue
                         t_str, v_str = linea.split(",")
                         t_micros = int(t_str)
-                        v_sin_offset = float(v_str) - subida_voltaje
+                        v_crudo = float(v_str) - subida_voltaje  # aplicar offset
                         if tiempo_inicial_micros is None:
                             tiempo_inicial_micros = t_micros
                         t_segundos = (t_micros - tiempo_inicial_micros) / 1e6
+
+                        # Aplicar filtros en tiempo real a la señal (ventana deslizante)
+                        # Para simplificar, filtramos después de capturar, pero aquí aplicamos un filtrado básico
                         if estado == "IDLE":
                             historial_t.append(t_segundos)
-                            historial_v.append(v_sin_offset)
-                            if abs(v_sin_offset) > UMBRAL_DISPARO:
+                            historial_v.append(v_crudo)
+                            # Detección de disparo sobre la señal filtrada (aproximación)
+                            if abs(v_crudo) > UMBRAL_DISPARO:
                                 print("¡Trigger! Capturando onda...")
                                 datos_t.extend(historial_t)
                                 datos_v.extend(historial_v)
                                 estado = "RECORDING"
                         elif estado == "RECORDING":
                             datos_t.append(t_segundos)
-                            datos_v.append(v_sin_offset)
+                            datos_v.append(v_crudo)
                             muestras_grabadas += 1
                     except Exception:
                         continue
 
             esp32.close()
+
+            # Convertir a arrays y aplicar filtro completo (pasa-altas + pasa-bajas) sin desfase
             t_raw = np.array(datos_t)
-            t_onda = t_raw - t_raw[0]
-            v_onda = np.array(datos_v)
+            v_raw = np.array(datos_v)
+
+            if len(v_raw) == 0:
+                print("No se capturaron datos.")
+                return None, None
+
+            # Filtrado de la señal capturada
+            v_filt = filtfilt(b_altas, a_altas, v_raw)
+            v_filt = filtfilt(b_bajas, a_bajas, v_filt)
+
+            # Umbral: si la señal es muy pequeña, se descarta
+            if np.max(np.abs(v_filt)) < UMBRAL_VOLTAJE:
+                print("Señal capturada por debajo del umbral. Intente nuevamente.")
+                return None, None
+
+            t_onda = t_raw - t_raw[0]  # reiniciar tiempo a cero
+            v_onda = v_filt
             print(f"Captura finalizada. Puntos: {len(t_onda)}")
             return t_onda, v_onda
 
@@ -1448,7 +1509,7 @@ def Solver(
                 ax1.set_xlabel("Tiempo (s)")
                 ax1.set_ylabel("Voltaje Centrado (V)", color="tab:blue")
                 ax1.plot(
-                    t_onda, v_onda, color="tab:blue", alpha=0.4, label="FEM (ESP32)"
+                    t_onda, v_onda, color="tab:blue", alpha=0.4, label="FEM (filtrada)"
                 )
                 ax1.tick_params(axis="y", labelcolor="tab:blue")
                 ax2 = ax1.twinx()
@@ -1480,9 +1541,6 @@ def Solver(
         elif metodo_c == "2":
             print("\n--- Usando método de ajuste senoidal (velocidad) ---")
 
-            # Convertir voltaje a velocidad (ya sin offset y con ganancia)
-            # v_real (FEM) ya está en voltios. La velocidad real es v_real / (G_sub_A * R_porcentaje)
-            # pero la constante la podemos absorber en el ajuste, o mejor extraer la amplitud de velocidad.
             def estimar_c_desde_velocidad(
                 t, v_fem, F_0, k, m, omega, G_sub_A, R_porcentaje
             ):
@@ -1493,7 +1551,6 @@ def Solver(
                 def modelo(t, A, phi, C):
                     return A * np.cos(omega * t - phi) + C
 
-                # Ajuste por mínimos cuadrados
                 try:
                     p0 = [np.max(np.abs(velocidad)), 0.0, 0.0]
                     popt, _ = curve_fit(modelo, t, velocidad, p0=p0)
@@ -1501,13 +1558,13 @@ def Solver(
                 except Exception as e:
                     print(f"Error en el ajuste senoidal: {e}")
                     return None, None, None, None
-                # Calcular c a partir de la amplitud
+
                 discriminante = (F_0 / A_est) ** 2 - (k - m * omega**2) ** 2
                 if discriminante < 0:
                     c_amp = None
                 else:
                     c_amp = np.sqrt(discriminante) / omega
-                # Calcular c a partir de la fase (solo si el denominador no es cero)
+
                 den_fase = k - m * omega**2
                 if abs(den_fase) < 1e-9:
                     c_fase = None
@@ -1520,8 +1577,6 @@ def Solver(
                 VENTANA = 300
                 PASO = 50
                 t_ventana, c_amp_list, c_fase_list = [], [], []
-                # Se selecciona una porción estable (por ejemplo, después de los primeros 0.5 s)
-                # para evitar transitorios. En ventanas pequeñas también funciona, pero mejor estabilizado.
                 for i in range(0, len(t_onda) - VENTANA, PASO):
                     t_w = t_onda[i : i + VENTANA]
                     v_w = v_onda[i : i + VENTANA]
@@ -1533,7 +1588,6 @@ def Solver(
                     if c_fase is not None:
                         c_fase_list.append(c_fase)
                     t_ventana.append(t_w[len(t_w) // 2])
-                # Mostrar resultados estadísticos
                 c_amp_arr = np.array(c_amp_list)
                 c_fase_arr = np.array(c_fase_list)
                 print("\n========== RESULTADOS (Ajuste senoidal) ==========")
@@ -1546,13 +1600,12 @@ def Solver(
                         f" c por FASE:     media = {np.mean(c_fase_arr):.6f} Ns/m, mediana = {np.median(c_fase_arr):.6f}, desv = {np.std(c_fase_arr):.6f}"
                     )
                 print("===================================================")
-                # Gráfica comparativa
                 fig, ax1 = plt.subplots(figsize=(12, 7))
                 plt.style.use("seaborn-v0_8-darkgrid")
                 ax1.set_xlabel("Tiempo (s)")
                 ax1.set_ylabel("Voltaje Centrado (V)", color="tab:blue")
                 ax1.plot(
-                    t_onda, v_onda, color="tab:blue", alpha=0.4, label="FEM (ESP32)"
+                    t_onda, v_onda, color="tab:blue", alpha=0.4, label="FEM (filtrada)"
                 )
                 ax1.tick_params(axis="y", labelcolor="tab:blue")
                 ax2 = ax1.twinx()
