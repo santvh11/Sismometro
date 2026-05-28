@@ -189,7 +189,7 @@ class SectionParams:
     m_sis: float = 73 * (1e-3)  # Masa total del sismómetro (Kg)
     m_mes: float = 4 * (1e-3)  # Masa vibrante de la mesa (Kg)
     m_tornillo: float = 11 * (1e-3)  # Masa del tornillo de ajuste (kg)
-    factor_amplificacion: float = 4  # Ganancia del amplificador
+    factor_amplificacion: float = 8  # Ganancia del amplificador
     subida_voltaje: float = 1.03  # Offset del ADC (vo3ltios)
     temp: float = 299.15  # Temperatura ambiente (K)
 
@@ -207,7 +207,7 @@ class SectionParams:
     L_libre_iman: float = 135 * (1e-3)  # Longitud libre del imán (m)
     omega_Hz: float = 10  # Frecuencia de excitación (Hz)
     omega = omega_Hz * 2 * np.pi  # Frecuencia angular (rad/s)
-    omega_filtro: float = 5  # filtro para la frecuencia automático
+    omega_filtro: float = 1  # filtro para la frecuencia automático
 
     # Dimensiones del contenedor y solenoide
     e_sub_p: float = 3 * (1e-3)  # Espesor del contenedor de PLA (m)
@@ -251,6 +251,7 @@ class SectionParams:
     puntos: int = 10000  # Número de puntos para simulación
     delta_t: int = 1  # Factor de submuestreo (cada delta_t puntos)
     factor_ESP_32: float = 16  # Factor de lectura del ESP 32
+    ESCALA_TIEMPO: float = 5.0  # Escala para el retardo en las gráficas
 
     # Parámetros Lorentzianos para la Fuerza de la mesa
 
@@ -587,6 +588,7 @@ def Solver(
     subida_voltaje = params.subida_voltaje
     omega_filtro = params.omega_filtro
     factor_ESP_32 = params.factor_ESP_32
+    ESCALA_TIEMPO = params.ESCALA_TIEMPO
 
     # Impresión de parámetros relevantes
     print(f"masa estimada en :{m:.3e} Kg")
@@ -909,7 +911,7 @@ def Solver(
         )
 
         # Umbral de voltaje para descartar ruido (20 mV pico a pico)
-        UMBRAL_VOLTAJE = 0.11  # voltios
+        UMBRAL_VOLTAJE = 0.20  # voltios
 
         TIMEOUT_SEGUNDOS = 4
         MAX_REINTENTOS = 3
@@ -1138,9 +1140,6 @@ def Solver(
 
             # Inicialización de líneas y textos
             if VISTA_SELECCIONADA in [0, 1]:
-                (linea_fem_cruda,) = ax_fem.plot(
-                    [], [], lw=1.5, color="purple", label="FEM Amplificada", alpha=0.7
-                )
                 (linea_fem_real,) = ax_fem.plot(
                     [], [], lw=1.5, color="blue", label="FEM Real"
                 )
@@ -1253,6 +1252,7 @@ def Solver(
 
                 if len(buffer_t) == TAMANO_VENTANA:
                     t_arr = np.array(buffer_t)
+                    t_escalado = t_arr * ESCALA_TIEMPO
                     v_arr = np.array(buffer_v) - subida_voltaje
                     v_filtrado = aplicar_filtros(t_arr, v_arr)
                     v_real = v_filtrado * factor_amplificacion
@@ -1276,21 +1276,19 @@ def Solver(
 
                     elementos = []
                     if VISTA_SELECCIONADA in [0, 1]:
-                        linea_fem_cruda.set_data(t_arr, v_filtrado)
-                        linea_fem_real.set_data(t_arr, v_real)
-                        ax_fem.set_xlim(t_arr[0], t_arr[-1])
+                        linea_fem_real.set_data(t_escalado, v_real)
+                        ax_fem.set_xlim(t_escalado[0], t_escalado[-1])
                         margen = max(np.abs(v_filtrado)) * 1.2 + 0.01
                         ax_fem.set_ylim(-margen, margen)
-                        elementos.extend([linea_fem_cruda, linea_fem_real])
                     if VISTA_SELECCIONADA in [0, 2]:
-                        linea_vel.set_data(t_arr, velocidad_real)
-                        ax_vel.set_xlim(t_arr[0], t_arr[-1])
+                        linea_vel.set_data(t_escalado, velocidad_real)
+                        ax_vel.set_xlim(t_escalado[0], t_escalado[-1])
                         margen_vel = max(np.abs(velocidad_real)) * 1.2 + 1e-6
                         ax_vel.set_ylim(-margen_vel, margen_vel)
                         elementos.append(linea_vel)
                     if VISTA_SELECCIONADA in [0, 3]:
-                        linea_pos.set_data(t_arr, posicion_iman)
-                        ax_pos.set_xlim(t_arr[0], t_arr[-1])
+                        linea_pos.set_data(t_escalado, posicion_iman)
+                        ax_pos.set_xlim(t_escalado[0], t_escalado[-1])
                         margen_pos = max(np.abs(posicion_iman)) * 1.2 + 1e-7
                         ax_pos.set_ylim(-margen_pos, margen_pos)
                         elementos.append(linea_pos)
