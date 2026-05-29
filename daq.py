@@ -18,6 +18,21 @@ import threading
 import os
 
 def run_daq_realtime(params: SectionParams, G_sub_L: float, G_sub_A: float):
+    """
+    Inicializa y ejecuta la Adquisición de Datos (DAQ) en tiempo real.
+    
+    Este método principal orquesta la comunicación serial con el ESP32, el filtrado 
+    digital de señales, y la interfaz gráfica interactiva con PyQtGraph. 
+    Dependiendo de la opción del usuario, puede desplegar la gráfica estándar,
+    el análisis modal (Opción 4), o la caracterización dinámica iterativa del 
+    amortiguamiento (Opción 5) utilizando métodos matemáticos avanzados (FFT, 
+    Newton-Raphson y Mínimos Cuadrados).
+    
+    Args:
+        params (SectionParams): Parámetros dinámicos y constantes físicas del sistema.
+        G_sub_L (float): Constante geométrica de la fuerza magnética de Laplace.
+        G_sub_A (float): Constante geométrica de acople electromotriz de Faraday.
+    """
     m = params.m
     c = params.c
     c_sub_lambda = params.c_sub_lambda
@@ -69,9 +84,9 @@ def run_daq_realtime(params: SectionParams, G_sub_L: float, G_sub_A: float):
     print(f"El factor Magnético de Área es: {G_sub_A:.3e}")
     print(f"El factor Magnético de Longitud es: {G_sub_L:.3e}")
     print(f"El factor de amortiguamiento es de: {Zeta:.3e}")
-    print(f"La frecuencia natural es de: {omega_sub_n_f:.3e} Hz")
+    print(f"La frecuencia natural es de: {omega_sub_n:.3e} Hz")
     print(f"La inercia eléctrica es de: {alpha:.3e} ")
-    print(f"La frecuencia eléctrica es de: {omega_sub_0_phi_m_f:.3e} Hz")
+    print(f"La frecuencia eléctrica es de: {omega_sub_0_phi_m:.3e} Hz")
     print(f"La fuerza base de la mesa F_0 es de :{F_0:.3e} N")
 
 
@@ -142,6 +157,8 @@ def run_daq_realtime(params: SectionParams, G_sub_L: float, G_sub_A: float):
     # Buffers circulares
     buffer_t = collections.deque(maxlen=TAMANO_VENTANA)
     buffer_v = collections.deque(maxlen=TAMANO_VENTANA)
+    buffer_fft = collections.deque(maxlen=50) # Promedio de las últimas 50 FFTs
+    buffer_v_pico = collections.deque(maxlen=50) # Promedio de los últimos 50 picos de voltaje
     estado = {
         "tiempo_inicial": None,
         "ultima_actualizacion": time.time(),
@@ -329,8 +346,16 @@ def run_daq_realtime(params: SectionParams, G_sub_L: float, G_sub_A: float):
         win.resize(800, 600)
         # Asegurar que se posicione en un punto visible de la pantalla
         win.move(100, 100)
-        win.setBackground('k')
+        win.setBackground('w')
         win.show()
+
+        # Etiqueta para el promedio de Frecuencia Dominante
+        fft_label = win.addLabel("Frec_Dominante_FFT: Calculando...", color="#008050", size="14pt", bold=True)
+        win.nextRow()
+
+        # Etiqueta para el Pico de Voltaje
+        v_pico_label = win.addLabel("Pico_Voltaje_Max: Calculando...", color="#BA2D0B", size="11pt", bold=True)
+        win.nextRow()
 
         # Dictionary to store plot items and curves
         plots = {}
@@ -437,6 +462,9 @@ def run_daq_realtime(params: SectionParams, G_sub_L: float, G_sub_A: float):
                     T_muestreo = 1.0 / FS
                     xf = fftfreq(N, T_muestreo)[: N // 2]
                     amplitud_fft = np.zeros_like(xf)
+                    frec_dom = 0.0
+                    buffer_fft.append(frec_dom)
+                    buffer_v_pico.append(0.0)
                     escritor_csv.writerow([datetime.now().strftime("%H:%M:%S.%f")[:-3], 0.0, 0.0, 0.0, 0.0, 0.0])
                 else:
                     velocidad_real = -v_real / (G_sub_A * R_porcentaje)
@@ -448,14 +476,29 @@ def run_daq_realtime(params: SectionParams, G_sub_L: float, G_sub_A: float):
                     amplitud_fft = 2.0 / N * np.abs(yf[0 : N // 2])
                     
                     indice_max_fft = np.argmax(amplitud_fft)
+                    frec_dom = xf[indice_max_fft]
+                    buffer_fft.append(frec_dom)
+                    buffer_v_pico.append(np.max(np.abs(v_real)))
                     escritor_csv.writerow([
                         datetime.now().strftime("%H:%M:%S.%f")[:-3],
                         np.max(np.abs(v_real)),
                         np.max(np.abs(velocidad_real)),
                         np.max(np.abs(posicion_iman)),
-                        xf[indice_max_fft],
+                        frec_dom,
                         amplitud_fft[indice_max_fft]
                     ])
+
+                if len(buffer_fft) >= 50:
+                    promedio_fft = np.mean(buffer_fft)
+                    fft_label.setText(f"Frec_Dominante_FFT: {promedio_fft:.2f} Hz", color="#008050")
+                else:
+                    fft_label.setText("Frec_Dominante_FFT: Calculando...", color="#008050")
+
+                if len(buffer_v_pico) >= 50:
+                    promedio_v = np.mean(buffer_v_pico)
+                    v_pico_label.setText(f"Pico_Voltaje_Max: {promedio_v:.4f} V", color="#BA2D0B")
+                else:
+                    v_pico_label.setText("Pico_Voltaje_Max: Calculando...", color="#BA2D0B")
 
                 if VISTA_SELECCIONADA in [0, 1]:
                     curves['fem'].setData(t_escalado, v_real)
@@ -543,9 +586,9 @@ def run_experimento_c(params: SectionParams, G_sub_L: float, G_sub_A: float):
     print(f"El factor Magnético de Área es: {G_sub_A:.3e}")
     print(f"El factor Magnético de Longitud es: {G_sub_L:.3e}")
     print(f"El factor de amortiguamiento es de: {Zeta:.3e}")
-    print(f"La frecuencia natural es de: {omega_sub_n_f:.3e} Hz")
+    print(f"La frecuencia natural es de: {omega_sub_n:.3e} Hz")
     print(f"La inercia eléctrica es de: {alpha:.3e} ")
-    print(f"La frecuencia eléctrica es de: {omega_sub_0_phi_m_f:.3e} Hz")
+    print(f"La frecuencia eléctrica es de: {omega_sub_0_phi_m:.3e} Hz")
     print(f"La fuerza base de la mesa F_0 es de :{F_0:.3e} N")
 
 

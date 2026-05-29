@@ -4,6 +4,14 @@ from models import Factores_Acople, run_modelo_mk1, run_modelo_mk2
 from daq import run_daq_realtime, run_experimento_c
 
 def main():
+    """
+    Función principal (Punto de entrada CLI).
+    
+    Inicia la interfaz de línea de comandos preguntándole al usuario 
+    qué modo de simulación o adquisición ejecutar (MK1, MK2, DAQ en vivo, etc.) 
+    y qué configuración física de hardware se utilizará (Bobina Pequeña o Grande).
+    Inyecta estos parámetros centralizados a los módulos correspondientes.
+    """
     while True:
         modelo = input(
             "Escriba (1) para mk_1 (lineal) o (2) para mk_2 (no lineal), "

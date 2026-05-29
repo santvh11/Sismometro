@@ -119,7 +119,7 @@ class SectionParams:
     m_sis: float = 73 * (1e-3)  # Masa total del sismómetro (Kg)
     m_mes: float = 4 * (1e-3)  # Masa vibrante de la mesa (Kg)
     m_tornillo: float = 11 * (1e-3)  # Masa del tornillo de ajuste (kg)
-    factor_amplificacion: float = 8  # Ganancia del amplificador
+    factor_amplificacion: float = 4.375  # Ganancia del amplificador
     subida_voltaje: float = 1.03  # Offset del ADC (vo3ltios)
     temp: float = 299.15  # Temperatura ambiente (K)
 
@@ -242,7 +242,7 @@ class SectionParams:
         
         if self.tipo_bobina == "1":
             # Bobina pequeña
-            self.m = 1.0 * (1e-3)
+            self.m = 1.3 * (1e-3)
             self.k = 83
             self.m_mag = 25.23 * (1e-2)
             self.R = 482
@@ -251,6 +251,7 @@ class SectionParams:
             self.m_sis = 44 * (1e-3)
             self.r_sub_p = 5 * (1e-3)
             self.h_sub_p = 36 * (1e-3)
+            self.R_sub_e= 4 * (1e-3)
             
             # Parámetros Lorentzianos (Pico 1, 2 y valle)
             self.Lorentz_a_1 = 9.368*(1e-1)
@@ -274,6 +275,7 @@ class SectionParams:
             self.m_sis = 73 * (1e-3)
             self.r_sub_p = 7 * (1e-3)
             self.h_sub_p = 34 * (1e-3)
+            self.R_sub_e= 8 * (1e-3)
             
             # Parámetros Lorentzianos (Pico 1, 2 y valle)
             self.Lorentz_a_1 = 5.766*(1e-1)

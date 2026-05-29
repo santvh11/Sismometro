@@ -33,6 +33,18 @@ def Factores_Acople(params: SectionParams) -> tuple[float, float]:
 
 
 def run_modelo_mk1(params: SectionParams, G_sub_L: float, G_sub_A: float):
+    """
+    Ejecuta el modelo físico lineal MK1 (Sistema Lineal Subamortiguado).
+    
+    Este modelo utiliza una solución matricial analítica basada en transformadas
+    de Laplace para encontrar la posición (z), velocidad (z_dot), carga (Q) 
+    y corriente (Q_dot) asumiendo que el amortiguamiento viscoso 'c' es constante.
+    
+    Args:
+        params (SectionParams): Objeto de configuración con las constantes físicas.
+        G_sub_L (float): Factor de acople magnético de la fuerza de Laplace.
+        G_sub_A (float): Factor de acople para la fuerza electromotriz.
+    """
     print('--- Entrando a Modelo MK1 (Lineal) ---')
     m = params.m
     c = params.c
@@ -81,9 +93,9 @@ def run_modelo_mk1(params: SectionParams, G_sub_L: float, G_sub_A: float):
     print(f"El factor Magnético de Área es: {G_sub_A:.3e}")
     print(f"El factor Magnético de Longitud es: {G_sub_L:.3e}")
     print(f"El factor de amortiguamiento es de: {Zeta:.3e}")
-    print(f"La frecuencia natural es de: {omega_sub_n_f:.3e} Hz")
+    print(f"La frecuencia natural es de: {omega_sub_n:.3e} Hz")
     print(f"La inercia eléctrica es de: {alpha:.3e} ")
-    print(f"La frecuencia eléctrica es de: {omega_sub_0_phi_m_f:.3e} Hz")
+    print(f"La frecuencia eléctrica es de: {omega_sub_0_phi_m:.3e} Hz")
     print(f"La fuerza base de la mesa F_0 es de :{F_0:.3e} N")
 
 
@@ -262,6 +274,18 @@ def run_modelo_mk1(params: SectionParams, G_sub_L: float, G_sub_A: float):
 
 
 def run_modelo_mk2(params: SectionParams, G_sub_L: float, G_sub_A: float):
+    """
+    Ejecuta el modelo físico avanzado MK2 (Sistema No Lineal).
+    
+    Este modelo utiliza integración numérica (solve_ivp con el método Radau) 
+    para resolver el sistema de ecuaciones diferenciales considerando fricción 
+    dinámica de fluidos (turbulencia dependiente de la velocidad al cuadrado).
+    
+    Args:
+        params (SectionParams): Objeto de configuración con las constantes físicas.
+        G_sub_L (float): Factor de acople magnético de la fuerza de Laplace.
+        G_sub_A (float): Factor de acople para la fuerza electromotriz.
+    """
     print('--- Entrando a Modelo MK2 (No lineal, RK45) ---')
     m = params.m
     c = params.c
@@ -310,9 +334,9 @@ def run_modelo_mk2(params: SectionParams, G_sub_L: float, G_sub_A: float):
     print(f"El factor Magnético de Área es: {G_sub_A:.3e}")
     print(f"El factor Magnético de Longitud es: {G_sub_L:.3e}")
     print(f"El factor de amortiguamiento es de: {Zeta:.3e}")
-    print(f"La frecuencia natural es de: {omega_sub_n_f:.3e} Hz")
+    print(f"La frecuencia natural es de: {omega_sub_n:.3e} Hz")
     print(f"La inercia eléctrica es de: {alpha:.3e} ")
-    print(f"La frecuencia eléctrica es de: {omega_sub_0_phi_m_f:.3e} Hz")
+    print(f"La frecuencia eléctrica es de: {omega_sub_0_phi_m:.3e} Hz")
     print(f"La fuerza base de la mesa F_0 es de :{F_0:.3e} N")
 
 
