@@ -189,7 +189,7 @@ class SectionParams:
     m_sis: float = 73 * (1e-3)  # Masa total del sismómetro (Kg)
     m_mes: float = 4 * (1e-3)  # Masa vibrante de la mesa (Kg)
     m_tornillo: float = 11 * (1e-3)  # Masa del tornillo de ajuste (kg)
-    factor_amplificacion: float = 8.1  # Ganancia del amplificador
+    factor_amplificacion: float = 8  # Ganancia del amplificador
     subida_voltaje: float = 1.03  # Offset del ADC (vo3ltios)
     temp: float = 299.15  # Temperatura ambiente (K)
 
@@ -207,7 +207,7 @@ class SectionParams:
     L_libre_iman: float = 135 * (1e-3)  # Longitud libre del imán (m)
     omega_Hz: float = 10  # Frecuencia de excitación (Hz)
     omega = omega_Hz * 2 * np.pi  # Frecuencia angular (rad/s)
-    omega_filtro: float = 5  # filtro para la frecuencia automático
+    omega_filtro: float = 1  # filtro para la frecuencia automático
 
     # Dimensiones del contenedor y solenoide
     e_sub_p: float = 3 * (1e-3)  # Espesor del contenedor de PLA (m)
@@ -249,7 +249,9 @@ class SectionParams:
     a: int = 0  # Tiempo inicial (s)
     b: float = 0.5  # Tiempo final (s)
     puntos: int = 10000  # Número de puntos para simulación
-    delta_t: int = 1  # Factor de submuestreo (cada delta_t puntos)H
+    delta_t: int = 1  # Factor de submuestreo (cada delta_t puntos)
+    factor_ESP_32: float = 16  # Factor de lectura del ESP 32
+    ESCALA_TIEMPO: float = 5.0  # Escala para el retardo en las gráficas
 
     # Parámetros Lorentzianos para la Fuerza de la mesa
 
@@ -585,6 +587,8 @@ def Solver(
     factor_amplificacion = params.factor_amplificacion
     subida_voltaje = params.subida_voltaje
     omega_filtro = params.omega_filtro
+    factor_ESP_32 = params.factor_ESP_32
+    ESCALA_TIEMPO = params.ESCALA_TIEMPO
 
     # Impresión de parámetros relevantes
     print(f"masa estimada en :{m:.3e} Kg")
@@ -893,17 +897,30 @@ def Solver(
         BAUDIOS = 115200
         TAMANO_VENTANA = 512
         FS = 1000.0  # Frecuencia de muestreo supuesta (Hz)
-        FC_PASA_ALTAS = max(0.5, omega - omega_filtro)
-        FC_PASA_BAJAS = omega + omega_filtro
-        TIMEOUT_SEGUNDOS = 4  # Segundos sin datos para reiniciar la conexión
+
+        # Parámetros para filtros adaptativos
+        MARGEN_FILTRO = 5.0  # Hz por encima/debajo de la frecuencia de excitación
+        f_center = params.omega_Hz  # frecuencia de excitación actual (Hz)
+        FC_PASA_ALTAS = max(0.5, f_center - MARGEN_FILTRO)
+        FC_PASA_BAJAS = f_center + MARGEN_FILTRO
+        # Límite de Nyquist
+        if FC_PASA_BAJAS > FS / 2:
+            FC_PASA_BAJAS = FS / 2 - 1
+        print(
+            f"Filtros adaptados: pasa-altas = {FC_PASA_ALTAS:.1f} Hz, pasa-bajas = {FC_PASA_BAJAS:.1f} Hz"
+        )
+
+        # Umbral de voltaje para descartar ruido (20 mV pico a pico)
+        UMBRAL_VOLTAJE = 0.20  # voltios
+
+        TIMEOUT_SEGUNDOS = 4
         MAX_REINTENTOS = 3
 
-        # Opción de solo guardar sin gráficos (ahorro de recursos)
+        # Opción de solo guardar sin gráficos
         MODO_SOLO_GUARDAR = bool(
             input("¿Desea ver gráficas (Enter) o guardar datos (escribir algo): ")
         )
 
-        # Si se ven gráficas, seleccionar pestaña
         if not MODO_SOLO_GUARDAR:
             VISTA_SELECCIONADA = int(
                 input(
@@ -934,9 +951,7 @@ def Solver(
                     print(f"Reintentando en 2 segundos...")
                     time.sleep(2)
         if esp32 is None:
-            print(
-                "No se pudo conectar al ESP32 después de varios intentos. Saliendo del modo 3."
-            )
+            print("No se pudo conectar al ESP32. Saliendo del modo 3.")
             return
 
         # Buffers circulares
@@ -949,24 +964,20 @@ def Solver(
         }
 
         def aplicar_filtros(tiempo, voltaje):
-            """Filtro pasa-altas + pasa-bajas usando filtfilt para evitar desfase."""
+            """Filtro pasa-altas + pasa-bajas usando filtfilt (sin desfase)."""
             nyquist = 0.5 * FS
             b_altas, a_altas = butter(2, FC_PASA_ALTAS / nyquist, btype="high")
             b_bajas, a_bajas = butter(2, FC_PASA_BAJAS / nyquist, btype="low")
             v_filt = filtfilt(b_altas, a_altas, voltaje)
             v_filt = filtfilt(b_bajas, a_bajas, v_filt)
-            return v_filt
+            return v_filt * factor_ESP_32
 
         # ---------------------------------------------------------------
         # Función para reiniciar la conexión si se pierden los datos
         # ---------------------------------------------------------------
         def reiniciar_conexion():
             nonlocal esp32, reintentos
-            print(
-                "\n⚠️  Sin datos durante {} segundos. Reintentando conexión...".format(
-                    TIMEOUT_SEGUNDOS
-                )
-            )
+            print(f"\n⚠️ Sin datos durante {TIMEOUT_SEGUNDOS} s. Reintentando...")
             try:
                 esp32.close()
             except:
@@ -976,7 +987,6 @@ def Solver(
             if reintentos < MAX_REINTENTOS:
                 esp32 = conectar_serial(PUERTO, BAUDIOS, reintentos + 1)
                 if esp32 is not None:
-                    # Limpiar buffers y estado
                     buffer_t.clear()
                     buffer_v.clear()
                     estado["tiempo_inicial"] = None
@@ -987,10 +997,9 @@ def Solver(
                     estado["conexion_activa"] = False
                     print("Fallo en la reconexión.")
             else:
-                print("Máximo de reintentos alcanzado. Cerrando modo de visualización.")
+                print("Máximo de reintentos alcanzado. Cerrando modo.")
                 estado["conexion_activa"] = False
                 plt.close("all")
-                # Salimos de la función Solver (opcional: podríamos solo salir del modo)
                 raise SystemExit("Se perdió la comunicación con el ESP32.")
 
         # -----------------------------------------------
@@ -1003,107 +1012,114 @@ def Solver(
             print("\n=======================================================")
             print("MODO LOGEO ACTIVO - VISUALIZACIÓN GRÁFICA APAGADA")
             print(f"Guardando datos en: {nombre_archivo}")
-            print("Presione Ctrl+C en la consola para detener la captura.")
+            print("Presione Ctrl+C para detener.")
             print("=======================================================\n")
-
-            archivo_csv = None
-            escritor_csv = None
             try:
-                archivo_csv = open(nombre_archivo, mode="w", newline="")
-                escritor_csv = csv.writer(archivo_csv)
-                escritor_csv.writerow(
-                    [
-                        "Marca_de_Tiempo",
-                        "FEM_Real_Pico_(V)",
-                        "Velocidad_Max_(m/s)",
-                        "Posicion_Max_(m)",
-                        "Frec_Dominante_FFT_(Hz)",
-                        "Amplitud_Max_FFT",
-                    ]
-                )
-                archivo_csv.flush()  # Forzar escritura inicial
-
-                ultimo_log = time.time()
-                while True:
-                    if not estado["conexion_activa"]:
-                        break
-                    while esp32.in_waiting > 0:
-                        try:
-                            linea = (
-                                esp32.readline()
-                                .decode("utf-8", errors="ignore")
-                                .strip()
-                            )
-                            if "," in linea:
-                                t_micros_str, v_str = linea.split(",")
-                                t_micros = int(t_micros_str)
-                                v_crudo = float(v_str)
-                                if estado["tiempo_inicial"] is None:
-                                    estado["tiempo_inicial"] = t_micros
-                                t_segundos = (t_micros - estado["tiempo_inicial"]) / 1e6
-                                buffer_t.append(t_segundos)
-                                buffer_v.append(v_crudo)
-                                estado["ultima_actualizacion"] = time.time()
-                        except Exception:
-                            pass
-                    # Verificar timeout
-                    if time.time() - estado["ultima_actualizacion"] > TIMEOUT_SEGUNDOS:
-                        reiniciar_conexion()
+                with open(nombre_archivo, mode="w", newline="") as archivo_csv:
+                    escritor_csv = csv.writer(archivo_csv)
+                    escritor_csv.writerow(
+                        [
+                            "Marca_de_Tiempo",
+                            "FEM_Real_Pico_(V)",
+                            "Velocidad_Max_(m/s)",
+                            "Posicion_Max_(m)",
+                            "Frec_Dominante_FFT_(Hz)",
+                            "Amplitud_Max_FFT",
+                        ]
+                    )
+                    ultimo_log = time.time()
+                    while True:
                         if not estado["conexion_activa"]:
                             break
-                        else:
-                            continue
-                    # Procesar cada 0.1 segundos si hay ventana llena
-                    if (
-                        len(buffer_t) == TAMANO_VENTANA
-                        and (time.time() - ultimo_log) >= 0.1
-                    ):
-                        ultimo_log = time.time()
-                        t_arr = np.array(buffer_t)
-                        v_arr = np.array(buffer_v) - subida_voltaje
-                        v_filtrado = aplicar_filtros(t_arr, v_arr)
-                        v_real = v_filtrado / factor_amplificacion
-                        velocidad_real = -v_real / (G_sub_A * R_porcentaje)
-                        posicion_iman = cumulative_trapezoid(
-                            velocidad_real, t_arr, initial=0
-                        )
-                        N = TAMANO_VENTANA
-                        T_muestreo = 1.0 / FS
-                        yf = fft(v_real)
-                        xf = fftfreq(N, T_muestreo)[: N // 2]
-                        amplitud_fft = 2.0 / N * np.abs(yf[0 : N // 2])
-                        indice_max_fft = np.argmax(amplitud_fft)
-                        timestamp_log = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-                        escritor_csv.writerow(
-                            [
-                                timestamp_log,
-                                np.max(np.abs(v_real)),
-                                np.max(np.abs(velocidad_real)),
-                                np.max(np.abs(posicion_iman)),
-                                xf[indice_max_fft],
-                                amplitud_fft[indice_max_fft],
-                            ]
-                        )
-                        archivo_csv.flush()  # ¡Importante! Forzar escritura a disco periódicamente
+                        while esp32.in_waiting > 0:
+                            try:
+                                linea = (
+                                    esp32.readline()
+                                    .decode("utf-8", errors="ignore")
+                                    .strip()
+                                )
+                                if "," in linea:
+                                    t_micros_str, v_str = linea.split(",")
+                                    t_micros = int(t_micros_str)
+                                    v_crudo = float(v_str)
+                                    if estado["tiempo_inicial"] is None:
+                                        estado["tiempo_inicial"] = t_micros
+                                    t_segundos = (
+                                        t_micros - estado["tiempo_inicial"]
+                                    ) / 1e6
+                                    buffer_t.append(t_segundos)
+                                    buffer_v.append(v_crudo)
+                                    estado["ultima_actualizacion"] = time.time()
+                            except Exception:
+                                pass
+                        # Timeout
+                        if (
+                            time.time() - estado["ultima_actualizacion"]
+                            > TIMEOUT_SEGUNDOS
+                        ):
+                            reiniciar_conexion()
+                            if not estado["conexion_activa"]:
+                                break
+                            else:
+                                continue
+                        # Procesar cada 0.1 s si la ventana está llena
+                        if (
+                            len(buffer_t) == TAMANO_VENTANA
+                            and (time.time() - ultimo_log) >= 0.1
+                        ):
+                            ultimo_log = time.time()
+                            t_arr = np.array(buffer_t)
+                            v_arr = np.array(buffer_v) - subida_voltaje
+                            v_filtrado = aplicar_filtros(t_arr, v_arr)
+                            v_real = v_filtrado * factor_amplificacion
+                            # Umbral: si la señal es muy pequeña, se guardan ceros
+                            if np.max(np.abs(v_real)) < UMBRAL_VOLTAJE:
+                                escritor_csv.writerow(
+                                    [
+                                        datetime.now().strftime("%H:%M:%S.%f")[:-3],
+                                        0.0,
+                                        0.0,
+                                        0.0,
+                                        0.0,
+                                        0.0,
+                                    ]
+                                )
+                                continue
+                            velocidad_real = -v_real / (G_sub_A * R_porcentaje)
+                            posicion_iman = cumulative_trapezoid(
+                                velocidad_real, t_arr, initial=0
+                            )
+                            N = TAMANO_VENTANA
+                            T_muestreo = 1.0 / FS
+                            yf = fft(v_real)
+                            xf = fftfreq(N, T_muestreo)[: N // 2]
+                            amplitud_fft = 2.0 / N * np.abs(yf[0 : N // 2])
+                            indice_max_fft = np.argmax(amplitud_fft)
+                            timestamp_log = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                            escritor_csv.writerow(
+                                [
+                                    timestamp_log,
+                                    np.max(np.abs(v_real)),
+                                    np.max(np.abs(velocidad_real)),
+                                    np.max(np.abs(posicion_iman)),
+                                    xf[indice_max_fft],
+                                    amplitud_fft[indice_max_fft],
+                                ]
+                            )
             except KeyboardInterrupt:
-                print("\nCaptura detenida por el usuario. Finalizando...")
+                print("\nCaptura detenida por el usuario. Archivo guardado.")
             except SystemExit:
                 pass
             finally:
-                # Cerrar archivo y puerto serie de forma segura
-                if archivo_csv:
-                    archivo_csv.flush()
-                    archivo_csv.close()
-                    print(f"Archivo guardado: {nombre_archivo}")
                 if esp32 and esp32.is_open:
                     esp32.close()
-                return
+            return
 
         # -----------------------------------------------
         # SUB-MODO: VISUALIZACIÓN CON GRÁFICAS EN TIEMPO REAL
         # -----------------------------------------------
         else:
-            # Configuración de los subplots según la vista seleccionada
+            # Configuración de subplots según la vista seleccionada
             if VISTA_SELECCIONADA == 0:
                 fig, axs = plt.subplots(4, 1, figsize=(12, 11))
                 ax_fem, ax_vel, ax_pos, ax_fft = axs
@@ -1122,11 +1138,8 @@ def Solver(
                 f"DAQ Sismómetro EAFIT - Vista Modo {VISTA_SELECCIONADA}"
             )
 
-            # Inicialización de líneas según la vista
+            # Inicialización de líneas y textos
             if VISTA_SELECCIONADA in [0, 1]:
-                (linea_fem_cruda,) = ax_fem.plot(
-                    [], [], lw=1.5, color="purple", label="FEM Amplificada", alpha=0.7
-                )
                 (linea_fem_real,) = ax_fem.plot(
                     [], [], lw=1.5, color="blue", label="FEM Real"
                 )
@@ -1134,7 +1147,6 @@ def Solver(
                 ax_fem.set_ylabel("Voltaje (V)")
                 ax_fem.grid(True)
                 ax_fem.legend(loc="upper right")
-                # Texto de timeout
                 text_timeout = ax_fem.text(
                     0.5,
                     0.95,
@@ -1207,7 +1219,6 @@ def Solver(
             plt.tight_layout()
 
             def actualizar(frame):
-                # Leer datos del puerto mientras haya
                 while esp32.in_waiting > 0:
                     try:
                         linea = (
@@ -1226,28 +1237,29 @@ def Solver(
                     except Exception:
                         pass
 
-                # Verificar timeout de recepción de datos
+                # Timeout y reconexión
                 if time.time() - estado["ultima_actualizacion"] > TIMEOUT_SEGUNDOS:
                     reiniciar_conexion()
                     if not estado["conexion_activa"]:
-                        # Cerrar figura y salir
                         plt.close(fig)
                         return ()
                     else:
-                        # Mostrar mensaje de espera en la gráfica
                         if "text_timeout" in locals():
                             text_timeout.set_text("Esperando datos... Reintentando")
                         return ()
-
-                # Limpiar mensaje de timeout si ya hay datos
                 if "text_timeout" in locals():
                     text_timeout.set_text("")
 
                 if len(buffer_t) == TAMANO_VENTANA:
                     t_arr = np.array(buffer_t)
+                    t_escalado = t_arr * ESCALA_TIEMPO
                     v_arr = np.array(buffer_v) - subida_voltaje
                     v_filtrado = aplicar_filtros(t_arr, v_arr)
-                    v_real = v_filtrado / factor_amplificacion
+                    v_real = v_filtrado * factor_amplificacion
+
+                    # Umbral para no dibujar ruido
+                    if np.max(np.abs(v_real)) < UMBRAL_VOLTAJE:
+                        return ()
 
                     if VISTA_SELECCIONADA in [0, 2, 3]:
                         velocidad_real = -v_real / (G_sub_A * R_porcentaje)
@@ -1264,21 +1276,19 @@ def Solver(
 
                     elementos = []
                     if VISTA_SELECCIONADA in [0, 1]:
-                        linea_fem_cruda.set_data(t_arr, v_filtrado)
-                        linea_fem_real.set_data(t_arr, v_real)
-                        ax_fem.set_xlim(t_arr[0], t_arr[-1])
+                        linea_fem_real.set_data(t_escalado, v_real)
+                        ax_fem.set_xlim(t_escalado[0], t_escalado[-1])
                         margen = max(np.abs(v_filtrado)) * 1.2 + 0.01
                         ax_fem.set_ylim(-margen, margen)
-                        elementos.extend([linea_fem_cruda, linea_fem_real])
                     if VISTA_SELECCIONADA in [0, 2]:
-                        linea_vel.set_data(t_arr, velocidad_real)
-                        ax_vel.set_xlim(t_arr[0], t_arr[-1])
+                        linea_vel.set_data(t_escalado, velocidad_real)
+                        ax_vel.set_xlim(t_escalado[0], t_escalado[-1])
                         margen_vel = max(np.abs(velocidad_real)) * 1.2 + 1e-6
                         ax_vel.set_ylim(-margen_vel, margen_vel)
                         elementos.append(linea_vel)
                     if VISTA_SELECCIONADA in [0, 3]:
-                        linea_pos.set_data(t_arr, posicion_iman)
-                        ax_pos.set_xlim(t_arr[0], t_arr[-1])
+                        linea_pos.set_data(t_escalado, posicion_iman)
+                        ax_pos.set_xlim(t_escalado[0], t_escalado[-1])
                         margen_pos = max(np.abs(posicion_iman)) * 1.2 + 1e-7
                         ax_pos.set_ylim(-margen_pos, margen_pos)
                         elementos.append(linea_pos)
@@ -1290,7 +1300,7 @@ def Solver(
                 return ()
 
             ani = animation.FuncAnimation(
-                fig, actualizar, interval=30, blit=False, cache_frame_data=False
+                fig, actualizar, interval=30, blit=False, save_count=100
             )
             plt.show()
             if esp32 and esp32.is_open:
@@ -1308,13 +1318,27 @@ def Solver(
 
         PUERTO = "COM3"
         BAUDIOS = 115200
-        FS = 1000.0
-        UMBRAL_DISPARO = 0.05
-        TIEMPO_CAPTURA = 3.0
+        FS = 1000.0  # Frecuencia de muestreo (Hz) consistente con ESP32
+        UMBRAL_DISPARO = 0.05  # Voltaje de disparo (sobre el offset)
+        TIEMPO_CAPTURA = 3.0  # Segundos de registro
 
-        # -----------------------------------------------------------------
-        # Función de captura de datos (común a ambos métodos)
-        # -----------------------------------------------------------------
+        # --- Filtros adaptativos centrados en la frecuencia de excitación ---
+        MARGEN_FILTRO = 5.0  # Hz
+        f_center = params.omega_Hz  # frecuencia de excitación actual (Hz)
+        FC_PASA_ALTAS = max(0.5, f_center - MARGEN_FILTRO)
+        FC_PASA_BAJAS = f_center + MARGEN_FILTRO
+        if FC_PASA_BAJAS > FS / 2:
+            FC_PASA_BAJAS = FS / 2 - 1
+        print(
+            f"Filtros adaptados: pasa-altas = {FC_PASA_ALTAS:.1f} Hz, pasa-bajas = {FC_PASA_BAJAS:.1f} Hz"
+        )
+
+        # Umbral para descartar ruido (20 mV pico)
+        UMBRAL_VOLTAJE = 0.02  # voltios
+
+        # ---------------------------------------------------------------
+        # Función de captura de datos con filtrado y umbral
+        # ---------------------------------------------------------------
         def capturar_evento_sismico():
             print(f"Conectando a {PUERTO}...")
             try:
@@ -1322,6 +1346,11 @@ def Solver(
             except Exception as e:
                 print(f"Error de conexión: {e}")
                 return None, None
+
+            # Diseño de filtros digitales (usando las frecuencias adaptativas)
+            nyquist = 0.5 * FS
+            b_altas, a_altas = butter(2, FC_PASA_ALTAS / nyquist, btype="high")
+            b_bajas, a_bajas = butter(2, FC_PASA_BAJAS / nyquist, btype="low")
 
             pre_trigger = 100
             historial_t = collections.deque(maxlen=pre_trigger)
@@ -1341,29 +1370,50 @@ def Solver(
                             continue
                         t_str, v_str = linea.split(",")
                         t_micros = int(t_str)
-                        v_sin_offset = float(v_str) - subida_voltaje
+                        v_crudo = float(v_str) - subida_voltaje  # aplicar offset
                         if tiempo_inicial_micros is None:
                             tiempo_inicial_micros = t_micros
                         t_segundos = (t_micros - tiempo_inicial_micros) / 1e6
+
+                        # Aplicar filtros en tiempo real a la señal (ventana deslizante)
+                        # Para simplificar, filtramos después de capturar, pero aquí aplicamos un filtrado básico
                         if estado == "IDLE":
                             historial_t.append(t_segundos)
-                            historial_v.append(v_sin_offset)
-                            if abs(v_sin_offset) > UMBRAL_DISPARO:
+                            historial_v.append(v_crudo)
+                            # Detección de disparo sobre la señal filtrada (aproximación)
+                            if abs(v_crudo) > UMBRAL_DISPARO:
                                 print("¡Trigger! Capturando onda...")
                                 datos_t.extend(historial_t)
                                 datos_v.extend(historial_v)
                                 estado = "RECORDING"
                         elif estado == "RECORDING":
                             datos_t.append(t_segundos)
-                            datos_v.append(v_sin_offset)
+                            datos_v.append(v_crudo)
                             muestras_grabadas += 1
                     except Exception:
                         continue
 
             esp32.close()
+
+            # Convertir a arrays y aplicar filtro completo (pasa-altas + pasa-bajas) sin desfase
             t_raw = np.array(datos_t)
-            t_onda = t_raw - t_raw[0]
-            v_onda = np.array(datos_v)
+            v_raw = np.array(datos_v) * factor_ESP_32
+
+            if len(v_raw) == 0:
+                print("No se capturaron datos.")
+                return None, None
+
+            # Filtrado de la señal capturada
+            v_filt = filtfilt(b_altas, a_altas, v_raw)
+            v_filt = filtfilt(b_bajas, a_bajas, v_filt)
+
+            # Umbral: si la señal es muy pequeña, se descarta
+            if np.max(np.abs(v_filt)) < UMBRAL_VOLTAJE:
+                print("Señal capturada por debajo del umbral. Intente nuevamente.")
+                return None, None
+
+            t_onda = t_raw - t_raw[0]  # reiniciar tiempo a cero
+            v_onda = v_filt
             print(f"Captura finalizada. Puntos: {len(t_onda)}")
             return t_onda, v_onda
 
@@ -1456,7 +1506,7 @@ def Solver(
                 ax1.set_xlabel("Tiempo (s)")
                 ax1.set_ylabel("Voltaje Centrado (V)", color="tab:blue")
                 ax1.plot(
-                    t_onda, v_onda, color="tab:blue", alpha=0.4, label="FEM (ESP32)"
+                    t_onda, v_onda, color="tab:blue", alpha=0.4, label="FEM (filtrada)"
                 )
                 ax1.tick_params(axis="y", labelcolor="tab:blue")
                 ax2 = ax1.twinx()
@@ -1488,9 +1538,6 @@ def Solver(
         elif metodo_c == "2":
             print("\n--- Usando método de ajuste senoidal (velocidad) ---")
 
-            # Convertir voltaje a velocidad (ya sin offset y con ganancia)
-            # v_real (FEM) ya está en voltios. La velocidad real es v_real / (G_sub_A * R_porcentaje)
-            # pero la constante la podemos absorber en el ajuste, o mejor extraer la amplitud de velocidad.
             def estimar_c_desde_velocidad(
                 t, v_fem, F_0, k, m, omega, G_sub_A, R_porcentaje
             ):
@@ -1501,7 +1548,6 @@ def Solver(
                 def modelo(t, A, phi, C):
                     return A * np.cos(omega * t - phi) + C
 
-                # Ajuste por mínimos cuadrados
                 try:
                     p0 = [np.max(np.abs(velocidad)), 0.0, 0.0]
                     popt, _ = curve_fit(modelo, t, velocidad, p0=p0)
@@ -1509,13 +1555,13 @@ def Solver(
                 except Exception as e:
                     print(f"Error en el ajuste senoidal: {e}")
                     return None, None, None, None
-                # Calcular c a partir de la amplitud
+
                 discriminante = (F_0 / A_est) ** 2 - (k - m * omega**2) ** 2
                 if discriminante < 0:
                     c_amp = None
                 else:
                     c_amp = np.sqrt(discriminante) / omega
-                # Calcular c a partir de la fase (solo si el denominador no es cero)
+
                 den_fase = k - m * omega**2
                 if abs(den_fase) < 1e-9:
                     c_fase = None
@@ -1528,8 +1574,6 @@ def Solver(
                 VENTANA = 300
                 PASO = 50
                 t_ventana, c_amp_list, c_fase_list = [], [], []
-                # Se selecciona una porción estable (por ejemplo, después de los primeros 0.5 s)
-                # para evitar transitorios. En ventanas pequeñas también funciona, pero mejor estabilizado.
                 for i in range(0, len(t_onda) - VENTANA, PASO):
                     t_w = t_onda[i : i + VENTANA]
                     v_w = v_onda[i : i + VENTANA]
@@ -1541,7 +1585,6 @@ def Solver(
                     if c_fase is not None:
                         c_fase_list.append(c_fase)
                     t_ventana.append(t_w[len(t_w) // 2])
-                # Mostrar resultados estadísticos
                 c_amp_arr = np.array(c_amp_list)
                 c_fase_arr = np.array(c_fase_list)
                 print("\n========== RESULTADOS (Ajuste senoidal) ==========")
@@ -1554,13 +1597,12 @@ def Solver(
                         f" c por FASE:     media = {np.mean(c_fase_arr):.6f} Ns/m, mediana = {np.median(c_fase_arr):.6f}, desv = {np.std(c_fase_arr):.6f}"
                     )
                 print("===================================================")
-                # Gráfica comparativa
                 fig, ax1 = plt.subplots(figsize=(12, 7))
                 plt.style.use("seaborn-v0_8-darkgrid")
                 ax1.set_xlabel("Tiempo (s)")
                 ax1.set_ylabel("Voltaje Centrado (V)", color="tab:blue")
                 ax1.plot(
-                    t_onda, v_onda, color="tab:blue", alpha=0.4, label="FEM (ESP32)"
+                    t_onda, v_onda, color="tab:blue", alpha=0.4, label="FEM (filtrada)"
                 )
                 ax1.tick_params(axis="y", labelcolor="tab:blue")
                 ax2 = ax1.twinx()
