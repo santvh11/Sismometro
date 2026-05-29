@@ -107,6 +107,8 @@ class SectionParams:
     # ---------------------------------------------------------------
     # Parámetros de primer orden (ingresados directamente por el usuario)
     # ---------------------------------------------------------------
+    tipo_bobina: str = "2"  # "1" para pequeña, "2" para grande
+
     R: float = 482  # Resistencia total (Ohm)
     L: float = 98 * (1e-3)  # Inductancia (H)
     C: float = 94 * (1e-5)  # Capacitancia (F)
@@ -237,6 +239,53 @@ class SectionParams:
 
     def __post_init__(self):
         """Calcula todos los parámetros derivados después de inicializar los básicos."""
+        
+        if self.tipo_bobina == "1":
+            # Bobina pequeña
+            self.m = 1.0 * (1e-3)
+            self.k = 83
+            self.m_mag = 25.23 * (1e-2)
+            self.R = 482
+            self.L = 5 * (1e-2)
+            self.C = 4 * (1e-5)
+            self.m_sis = 44 * (1e-3)
+            self.r_sub_p = 5 * (1e-3)
+            self.h_sub_p = 36 * (1e-3)
+            
+            # Parámetros Lorentzianos (Pico 1, 2 y valle)
+            self.Lorentz_a_1 = 9.368*(1e-1)
+            self.Lorentz_b_1 = 3.196
+            self.Lorentz_c_1 = 2.993
+            
+            self.Lorentz_a_2 = 4.257*(1e-1)
+            self.Lorentz_b_2 = 5.581*(1e-1)
+            self.Lorentz_c_2 = 8.964
+            
+            self.Lorentz_k = 6.715*(1e-6)
+            
+        elif self.tipo_bobina == "2":
+            # Bobina grande
+            self.m = 3.1 * (1e-3)
+            self.k = 112
+            self.m_mag = 17.33 * (1e-2)
+            self.R = 689
+            self.L = 98 * (1e-3)
+            self.C = 94 * (1e-5)
+            self.m_sis = 73 * (1e-3)
+            self.r_sub_p = 7 * (1e-3)
+            self.h_sub_p = 34 * (1e-3)
+            
+            # Parámetros Lorentzianos (Pico 1, 2 y valle)
+            self.Lorentz_a_1 = 5.766*(1e-1)
+            self.Lorentz_b_1 = 3.150
+            self.Lorentz_c_1 = 2.993
+            
+            self.Lorentz_a_2 = 2.622*(1e-1)
+            self.Lorentz_b_2 = 5.574*(1e-1)
+            self.Lorentz_c_2 = 8.964
+            
+            self.Lorentz_k = 6.727*(1e-6)
+
         # Geometría del solenoide
         self.N_sub_c = round(self.h_sub_p / self.e_sub_cs)  # Vueltas por capa
         self.N_sub_c_capas = self.N_sub_c_total / self.N_sub_c  # Número de capas

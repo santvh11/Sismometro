@@ -16,8 +16,20 @@ def main():
         else:
             print("Entrada no válida. Inténtalo de nuevo.")
 
+    while True:
+        opcion_bobina = input(
+            "\nSeleccione la configuración del sismómetro:\n"
+            "(1) Bobina pequeña\n"
+            "(2) Bobina grande\n"
+            "Elección: "
+        ).strip()
+        if opcion_bobina in ["1", "2"]:
+            break
+        else:
+            print("Entrada no válida. Inténtalo de nuevo.")
+
     print("\n--- INICIALIZANDO PARÁMETROS DEL SISMÓMETRO ---")
-    parametros = SectionParams()
+    parametros = SectionParams(tipo_bobina=opcion_bobina)
 
     print("\n--- INICIANDO INTEGRAL CAMPO MAGNETICO ---")
     G_sub_L, G_sub_A = Factores_Acople(parametros)
