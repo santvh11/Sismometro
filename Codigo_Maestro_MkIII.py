@@ -180,13 +180,13 @@ class SectionParams:
     # Parámetros de primer orden (ingresados directamente por el usuario)
     # ---------------------------------------------------------------
     R: float = 482  # Resistencia total (Ohm)
-    L: float = 98 * (1e-3)  # Inductancia (H)
-    C: float = 94 * (1e-5)  # Capacitancia (F)
-    c: float = 2  # Coeficiente de amortiguamiento (Kg/s) - valor por defecto
-    m: float = 3.4 * (1e-3)  # Masa oscilante (Kg)
+    L: float = 5 * (1e-2)  # Inductancia (H)
+    C: float = 4 * (1e-5)  # Capacitancia (F)
+    c: float = 1.1  # Coeficiente de amortiguamiento (Kg/s) - valor por defecto
+    m: float = 7 * (1e-3)  # Masa oscilante (Kg)
     k: float = 112  # Constante elástica (N/m)
-    m_mag: float = 17.33 * (1e-2)  # Momento magnético (A*m^2)
-    m_sis: float = 73 * (1e-3)  # Masa total del sismómetro (Kg)
+    m_mag: float = 25.23 * (1e-2)  # Momento magnético (A*m^2)
+    m_sis: float = 44 * (1e-3)  # Masa total del sismómetro (Kg)
     m_mes: float = 4 * (1e-3)  # Masa vibrante de la mesa (Kg)
     m_tornillo: float = 11 * (1e-3)  # Masa del tornillo de ajuste (kg)
     factor_amplificacion: float = 8  # Ganancia del amplificador
@@ -202,7 +202,7 @@ class SectionParams:
     # Parámetros mecánicos y geométricos
     g: float = 9.77  # Gravedad (m/s²)
     eta: float = 1.5  # Viscosidad dinámica (Pa·s) - se recalcula con temperatura
-    R_sub_e: float = 9.5 * (1e-3)  # Radio de la esfera (m)
+    R_sub_e: float = 4 * (1e-3)  # Radio de la esfera (m)
     L_cilindro: float = 10 * (1e-3)  # Longitud del cilindro (resorte) (m)
     L_libre_iman: float = 135 * (1e-3)  # Longitud libre del imán (m)
     omega_Hz: float = 10  # Frecuencia de excitación (Hz)
@@ -211,9 +211,9 @@ class SectionParams:
 
     # Dimensiones del contenedor y solenoide
     e_sub_p: float = 3 * (1e-3)  # Espesor del contenedor de PLA (m)
-    h_sub_p: float = 34 * (1e-3)  # Altura del contenedor (m)
-    r_sub_p: float = 7 * (1e-3)  # Radio del contenedor (m)
-    h_sub_f: float = 34 * (1e-3)  # Altura del fluido (m)
+    h_sub_p: float = 36 * (1e-3)  # Altura del contenedor (m)
+    r_sub_p: float = 5 * (1e-3)  # Radio del contenedor (m)
+    h_sub_f: float = 36 * (1e-3)  # Altura del fluido (m)
     g_sub_ecs: float = 0.015 * (1e-3)  # Grosor del esmalte (m)
     e_sub_cs: float = 0.102 * (1e-3)  # Diámetro del cable del solenoide (m)
     N_sub_c_total: float = 3000  # Número total de vueltas
@@ -256,17 +256,17 @@ class SectionParams:
     # Parámetros Lorentzianos para la Fuerza de la mesa
 
     # Primer Pico
-    Lorentz_a_1: float = 5.766 * (1e-1)
-    Lorentz_b_1: float = 3.150
+    Lorentz_a_1: float = 9.368 * (1e-1)
+    Lorentz_b_1: float = 3.196
     Lorentz_c_1: float = 2.993
 
     # Segundo Pico
-    Lorentz_a_2: float = 2.622 * (1e-1)
-    Lorentz_b_2: float = 5.574 * (1e-1)
+    Lorentz_a_2: float = 4.257 * (1e-1)
+    Lorentz_b_2: float = 5.581 * (1e-1)
     Lorentz_c_2: float = 8.964
 
     # Valle
-    Lorentz_k: float = 6.727 * (1e-6)
+    Lorentz_k: float = 6.715 * (1e-6)
 
     # ---------------------------------------------------------------
     # Parámetros de segundo orden (se calculan automáticamente)
@@ -788,7 +788,7 @@ def Solver(
     # MODO 2: MODELO MK2 (NO LINEAL, SOLUCIÓN NUMÉRICA CON SOLVE_IVP)
     # =================================================================
     elif modelo_mk2:
-        print("--- Entrando a Modelo MK2 (No lineal, RK45) ---")
+        print("--- Entrando a Modelo MK2 (No lineal) ---")
 
         # Definición de la matriz de estado con amortiguamiento cuadrático |v|*v
         def state_matrix(t, S):
@@ -807,8 +807,8 @@ def Solver(
             [z_0, z_dot_0, Q_0, Q_dot_0],
             t_eval=t,
             method="LSODA",
-            rtol=1e-8,
-            atol=1e-10,
+            # rtol=1e-8,
+            # atol=1e-10,
         )
 
         if not solver.success:
