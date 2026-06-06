@@ -1,340 +1,190 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from dataclasses import dataclass, field
-from typing import List, Optional
+from scipy.optimize import fsolve
 
-# ===================================================================
-# 1. PARÁMETROS GLOBALES Y AMBIENTALES
-# ===================================================================
+# ==================================================================
+# 1. PARÁMETROS REALES (basados en tus imágenes y datos)
+# ==================================================================
+# Soplador GF-180
+Q_total_Lpm = 320.0  # L/min
+Q_total = Q_total_Lpm / (1000 * 60)  # m³/s
+P_soplor_manometrica = 10000.0  # 10 kPa (presión máxima de salida)
 
+# Tubería: PVC rígido 1" (diámetro interior típico ≈ 26.6 mm)
+D_mm = 26.6
+D = D_mm / 1000.0  # m
+A_total = np.pi * D**2 / 4.0
+rugosidad_abs = 0.0015e-3  # PVC liso (1.5 µm)
 
-@dataclass
-class EntornoSimulacion:
-    altitud_m: float = 2150.0
-    temp_ambiente_c: float = 17.0
-    P0: float = 101325.0
-    T0: float = 288.15
-    g: float = 9.793
-    R: float = 8.314
-    L_grad: float = 0.0065
-    M_aire: float = 0.028964
+# Geometría del montaje (del código MkI)
+L_principal = 2.0  # m (tramo motor → bifurcación)
+L_rama = 1.5  # m (bifurcación → válvula)
+L_hueco = 0.01  # m (orificio final)
+sumergencia_h = 0.6  # m (profundidad del difusor)
 
-    OUR_objetivo: float = 3.0
-    eficiencia_transferencia: float = 0.05
-    volumen_tanque_L: float = 100.0
+# Accesorios
+K_codo90 = 0.9
+K_entrada_bifurcacion = 0.5  # estimado
+K_salida_tanque = 1.0  # descarga sumergida
+K_accesorios_fijos = K_codo90 + K_entrada_bifurcacion + K_salida_tanque
 
-    P_atm_local: float = field(init=False)
-    densidad_O2_mmol_L: float = field(init=False)
+# Fluido: aire a 20°C y 2150 m de altitud (calculado con entorno)
+# Usamos los datos del EntornoSimulacion de tu código
+altitud = 2150.0
+temp_ambiente_c = 17.0
+# Presión atmosférica local (ecuación barométrica)
+P0 = 101325.0
+T0 = 288.15
+g = 9.793
+R_univ = 8.314
+M_aire = 0.028964
+L_grad = 0.0065
+exponente = (g * M_aire) / (R_univ * L_grad)
+P_atm_local = P0 * (1 - L_grad * altitud / T0) ** exponente
+# Densidad del aire (gas ideal)
+T_k = temp_ambiente_c + 273.15
+rho_aire = (P_atm_local * M_aire) / (R_univ * T_k)  # kg/m³
+# Viscosidad dinámica del aire a 20°C
+mu_aire = 1.82e-5  # Pa·s
 
-    def __post_init__(self):
-        self.P_atm_local = self.calcular_presion_atmosferica()
-        self.densidad_O2_mmol_L = self.calcular_densidad_o2_vdw()
-
-    def calcular_presion_atmosferica(self) -> float:
-        exponente = (self.g * self.M_aire) / (self.R * self.L_grad)
-        base = 1.0 - ((self.L_grad * self.altitud_m) / self.T0)
-        return self.P0 * (base**exponente)
-
-    def calcular_densidad_o2_vdw(self) -> float:
-        T_k = self.temp_ambiente_c + 273.15
-        P_o2 = 0.2095 * self.P_atm_local
-        a, b = 0.1382, 3.186e-5
-        rho = P_o2 / (self.R * T_k)
-        for _ in range(20):
-            f = (rho * self.R * T_k) / (1.0 - rho * b) - a * (rho**2) - P_o2
-            df = (self.R * T_k) / ((1.0 - rho * b) ** 2) - 2 * a * rho
-            rho_nueva = rho - f / df
-            if abs(rho_nueva - rho) < 1e-7:
-                break
-            rho = rho_nueva
-        return rho
-
-
-# ===================================================================
-# 2. TOPOLOGÍA DE LA RED (MANIFOLD / MÚLTIPLE)
-# ===================================================================
-
-
-class Tramo:
-    def __init__(
-        self,
-        id_tramo: str,
-        longitud: float,
-        diametro: float,
-        delta_z: float,
-        es_hueco: bool = False,
-        num_tanque: Optional[int] = None,
-        h_profundidad_tanque: float = 0.0,
-        k_menor: float = 0.0,
-        rugosidad: float = 1.5e-6,
-    ):
-        self.id_tramo = id_tramo
-        self.D = diametro
-        self.L = longitud
-        self.dz = delta_z
-        self.epsilon = rugosidad
-        self.A = np.pi * (self.D**2) / 4.0
-        self.K_menor = k_menor
-        self.es_hueco = es_hueco
-        self.num_tanque = num_tanque
-        self.h_prof = h_profundidad_tanque
-        self.hijos: List["Tramo"] = []
-
-        self.caudal: float = 0.0
-        self.velocidad: float = 0.0
-        self.P_entrada: float = 0.0
-        self.P_salida: float = 0.0
-
-    def agregar_bifurcacion(self, tramo_hijo: "Tramo"):
-        self.hijos.append(tramo_hijo)
+# Parámetros del tanque (para verificar demanda biológica, no necesario para el ángulo)
+OUR_objetivo = 3.0  # mmol O2 / (L·h)
+V_tanque = 100.0  # L
+eficiencia_O2 = 0.05
+# Densidad molar del O2 en el aire a esta altitud (ya lo calculaste)
+densidad_O2_molar = 8.6  # mmol/L (valor típico)
 
 
-# ===================================================================
-# 3. NÚCLEO DEL SIMULADOR (CON BALANCEO FÍSICO ITERATIVO)
-# ===================================================================
+# ==================================================================
+# 2. FUNCIONES HIDRÁULICAS
+# ==================================================================
+def factor_friccion(Re, epsilon, D):
+    """Swamee-Jain (turbulento) o 64/Re (laminar)"""
+    if Re < 2300:
+        return 64.0 / Re
+    f = 0.25 / (np.log10(epsilon / (3.7 * D) + 5.74 / Re**0.9)) ** 2
+    return max(0.008, min(0.08, f))
 
 
-class SimuladorFlujo:
-    def __init__(
-        self,
-        raiz: Tramo,
-        entorno: EntornoSimulacion,
-        rho_fluido: float = 998.0,
-        mu_fluido: float = 1.0e-3,
-    ):
-        self.raiz = raiz
-        self.env = entorno
-        self.rho = rho_fluido
-        self.mu = mu_fluido
-        self.lista_tramos = []
-        self._mapear_red(self.raiz)
-
-    def _mapear_red(self, nodo: Tramo):
-        self.lista_tramos.append(nodo)
-        for hijo in nodo.hijos:
-            self._mapear_red(hijo)
-
-    def _calcular_friccion(self, v: float, D: float, L: float, epsilon: float) -> float:
-        if v == 0:
-            return 0.0
-        Re = self.rho * abs(v) * D / self.mu
-        if Re < 10:
-            return 0.0
-        if Re < 2300:
-            f = 64.0 / Re
-        else:
-            f = 0.25 / (np.log10((epsilon / (3.7 * D)) + (5.74 / (Re**0.9)))) ** 2
-        return f * (L / D) * 0.5 * self.rho * (v**2)
-
-    def resolver_flujo_directo(
-        self, P_motor_manometrica: float, Q_total_estimado: float
-    ):
-        """Asigna flujo iterativamente basado en la presión remanente (Torricelli modificado)"""
-        # Presión Absoluta en la bomba
-        self.raiz.P_entrada = self.env.P_atm_local + P_motor_manometrica
-
-        # 1. Distribución inicial equitativa para arranque
-        self._distribuir_caudales_por_area(self.raiz, Q_total_estimado)
-
-        # 2. Bucle de relajación (Balanceo de red)
-        for _ in range(15):
-            self._propagar_presiones(self.raiz)
-
-            huecos = [t for t in self.lista_tramos if t.es_hueco]
-            pesos = []
-
-            for h in huecos:
-                # Contrapresión hidrostática del tanque
-                P_contra = self.env.P_atm_local + (self.rho * self.env.g * h.h_prof)
-                delta_p = h.P_entrada - P_contra
-                # El caudal es proporcional a la raíz cuadrada de la presión estática disponible
-                peso = np.sqrt(max(1e-5, delta_p)) * h.A
-                pesos.append(peso)
-
-            suma_pesos = sum(pesos)
-
-            for i, h in enumerate(huecos):
-                h.caudal = Q_total_estimado * (pesos[i] / suma_pesos)
-                h.velocidad = h.caudal / h.A
-
-            # Recalcular hacia atrás para ajustar los colectores principales
-            self._actualizar_caudales_hacia_arriba(self.raiz)
-
-    def _distribuir_caudales_por_area(self, nodo: Tramo, Q_entrada: float):
-        nodo.caudal = Q_entrada
-        nodo.velocidad = Q_entrada / nodo.A
-        if not nodo.hijos:
-            return
-        area_total = sum(h.A for h in nodo.hijos)
-        for hijo in nodo.hijos:
-            self._distribuir_caudales_por_area(hijo, Q_entrada * (hijo.A / area_total))
-
-    def _propagar_presiones(self, nodo: Tramo):
-        dp_friccion = self._calcular_friccion(
-            nodo.velocidad, nodo.D, nodo.L, nodo.epsilon
-        )
-        dp_menor = nodo.K_menor * 0.5 * self.rho * (nodo.velocidad**2)
-        dp_gravedad = self.rho * self.env.g * nodo.dz
-
-        nodo.P_salida = nodo.P_entrada - dp_friccion - dp_menor - dp_gravedad
-        for hijo in nodo.hijos:
-            hijo.P_entrada = nodo.P_salida
-            self._propagar_presiones(hijo)
-
-    def _actualizar_caudales_hacia_arriba(self, nodo: Tramo) -> float:
-        if not nodo.hijos:
-            return nodo.caudal
-        caudal_acumulado = 0.0
-        for hijo in nodo.hijos:
-            caudal_acumulado += self._actualizar_caudales_hacia_arriba(hijo)
-        nodo.caudal = caudal_acumulado
-        nodo.velocidad = nodo.caudal / nodo.A
-        return nodo.caudal
-
-    def reporte_energetico(self, P_motor_manometrica: float):
-        print("\n--- ANÁLISIS ENERGÉTICO ---")
-        potencia_neta = self.raiz.caudal * P_motor_manometrica
-        perdida_friccion_total = sum(
-            self._calcular_friccion(t.velocidad, t.D, t.L, t.epsilon) * t.caudal
-            for t in self.lista_tramos
-        )
-        pct_perdida = (
-            (perdida_friccion_total / potencia_neta) * 100 if potencia_neta > 0 else 0
-        )
-
-        print(f"Potencia neta entregada: {potencia_neta:.2f} W")
-        print(f"Energía disipada por fricción: {pct_perdida:.1f}%")
-        print(
-            "✓ ESTADO: Eficiencia Óptima"
-            if pct_perdida < 27.0
-            else "⚠ ALERTA: Fricción alta"
-        )
-
-    def generar_graficas_por_tanque(self):
-        tramos_tanques = [
-            t for t in self.lista_tramos if t.es_hueco and t.num_tanque is not None
-        ]
-        tramos_tanques.sort(key=lambda x: x.num_tanque)
-
-        tanques_labels = [f"Grupo T{t.num_tanque}" for t in tramos_tanques]
-        presiones = [
-            (t.P_salida - self.env.P_atm_local) / 1000.0 for t in tramos_tanques
-        ]
-        velocidades = [t.velocidad for t in tramos_tanques]
-        flujos_masicos = [t.caudal * self.rho for t in tramos_tanques]
-
-        fig, axs = plt.subplots(1, 3, figsize=(15, 5))
-        fig.suptitle(
-            "Condiciones Hidráulicas por Grupos de Simetría (Manifold)",
-            fontsize=14,
-            fontweight="bold",
-        )
-
-        axs[0].bar(
-            tanques_labels, presiones, color="#3498db", edgecolor="black", alpha=0.8
-        )
-        axs[0].set_ylabel("Presión Manométrica Salida (kPa)")
-        axs[0].set_title("Caída de Presión en Red")
-        axs[0].grid(True, linestyle="--", alpha=0.5, axis="y")
-
-        axs[1].bar(
-            tanques_labels, velocidades, color="#2ecc71", edgecolor="black", alpha=0.8
-        )
-        axs[1].set_ylabel("Velocidad de Salida (m/s)")
-        axs[1].set_title("Perfil de Velocidad por Grupo")
-        axs[1].grid(True, linestyle="--", alpha=0.5, axis="y")
-
-        axs[2].bar(
-            tanques_labels,
-            flujos_masicos,
-            color="#e74c3c",
-            edgecolor="black",
-            alpha=0.8,
-        )
-        axs[2].set_ylabel("Flujo Másico (kg/s)")
-        axs[2].set_title("Distribución de Masa Real")
-        axs[2].grid(True, linestyle="--", alpha=0.5, axis="y")
-
-        plt.tight_layout()
-        plt.show()
+def Kv_valvula(theta_deg):
+    """theta=0 abierta, theta=90 cerrada.
+    K = (sinθ/(1-sinθ))^2."""
+    if theta_deg <= 0:
+        return 0.0
+    if theta_deg >= 90:
+        return 1e6
+    sinθ = np.sin(np.radians(theta_deg))
+    return (sinθ / (1.0 - sinθ)) ** 2
 
 
-# ===================================================================
-# 4. CONFIGURACIÓN EN MANIFOLD (COLECTOR EN SERIE CON DERIVACIONES)
-# ===================================================================
-if __name__ == "__main__":
-    entorno = EntornoSimulacion()
+def perdida_tramo(Q, D, L, K_local_extra, epsilon, rho, mu, es_hueco=False, h_sum=0.0):
+    """Calcula la caída de presión (Pa) en un tramo de tubería.
+    Si es_hueco=True, añade la contrapresión hidrostática del agua."""
+    v = Q / (np.pi * D**2 / 4.0)
+    Re = rho * v * D / mu
+    f = factor_friccion(Re, epsilon, D)
+    dp_fric = f * (L / D) * 0.5 * rho * v**2
+    dp_local = K_local_extra * 0.5 * rho * v**2
+    dp = dp_fric + dp_local
+    if es_hueco:
+        # Contrapresión del agua (rho_agua * g * h)
+        dp += 1000.0 * 9.81 * h_sum
+    return dp
 
-    # Presión Manométrica del Motor: 1 bar (100 kPa)
-    Presion_Motor_Gauge = 100000.0
 
-    # Caudal total de 0.6 L/s para evitar velocidades extremas
-    Caudal_Estimado = 0.0006
+# ==================================================================
+# 3. CONFIGURACIÓN DE LA RED (dos ramas simétricas, con válvula)
+# ==================================================================
+# Caudal por rama (mitad del total)
+Q_rama = Q_total / 2.0
 
-    # --- TRAMO PRINCIPAL 1 ---
-    colector_1 = Tramo("Colector_1", longitud=1.0, diametro=0.04, delta_z=0.0)
-    derivacion_T1 = Tramo(
-        "Deriv_T1", longitud=0.5, diametro=0.02, delta_z=0.0, k_menor=0.9
-    )
-    # Diametro 12mm representa el área equivalente de 4 huecos de 6mm (por simetría)
-    hueco_T1 = Tramo(
-        "Orificio_T1",
-        longitud=0.02,
-        diametro=0.012,
-        delta_z=0.0,
+# Pérdidas en el tramo principal (motor → bifurcación)
+dp_principal = perdida_tramo(
+    Q_total, D, L_principal, 0.0, rugosidad_abs, rho_aire, mu_aire
+)
+
+# Presión disponible a la entrada de cada rama (manométrica)
+P_entrada_rama_man = P_soplor_manometrica - dp_principal
+
+
+# En cada rama: tubería (L_rama) + accesorios fijos + válvula + hueco
+# La pérdida total en la rama debe igualar P_entrada_rama_man (para que la presión final sea la atmosférica + hidrostática)
+def ecuacion_theta(theta):
+    Kv = Kv_valvula(theta)
+    K_total_rama = K_accesorios_fijos + Kv
+    dp_rama = perdida_tramo(
+        Q_rama,
+        D,
+        L_rama,
+        K_total_rama,
+        rugosidad_abs,
+        rho_aire,
+        mu_aire,
         es_hueco=True,
-        num_tanque=1,
-        h_profundidad_tanque=0.5,
+        h_sum=sumergencia_h,
     )
+    # La presión a la salida del hueco debe ser igual a la presión atmosférica (referencia manométrica = 0)
+    # Por tanto, la presión disponible (P_entrada_rama_man) debe consumirse íntegramente:
+    return dp_rama - P_entrada_rama_man
 
-    # --- TRAMO PRINCIPAL 2 ---
-    colector_2 = Tramo("Colector_2", longitud=1.0, diametro=0.04, delta_z=0.0)
-    derivacion_T2 = Tramo(
-        "Deriv_T2", longitud=0.5, diametro=0.02, delta_z=0.0, k_menor=0.9
-    )
-    hueco_T2 = Tramo(
-        "Orificio_T2",
-        longitud=0.02,
-        diametro=0.012,
-        delta_z=0.0,
-        es_hueco=True,
-        num_tanque=2,
-        h_profundidad_tanque=0.5,
-    )
 
-    # --- TRAMO PRINCIPAL 3 ---
-    colector_3 = Tramo("Colector_3", longitud=1.0, diametro=0.04, delta_z=0.0)
-    derivacion_T3 = Tramo(
-        "Deriv_T3", longitud=0.5, diametro=0.02, delta_z=0.0, k_menor=0.9
-    )
-    hueco_T3 = Tramo(
-        "Orificio_T3",
-        longitud=0.02,
-        diametro=0.012,
-        delta_z=0.0,
-        es_hueco=True,
-        num_tanque=3,
-        h_profundidad_tanque=0.5,
-    )
+# Buscamos theta en [0, 90]
+theta_inicial = 30.0
+sol = fsolve(ecuacion_theta, theta_inicial, full_output=True)
+if sol[2] == 1:
+    theta_teorico = sol[0][0]
+    theta_teorico = max(0.0, min(90.0, theta_teorico))
+    print(f"Ángulo teórico de la válvula (θ) = {theta_teorico:.1f}°")
+else:
+    print("No se encontró solución. Verifique los datos.")
 
-    # ENSAMBLAJE DEL ÁRBOL EN SERIE (Flujo viaja de 1 -> 2 -> 3)
-    derivacion_T1.agregar_bifurcacion(hueco_T1)
-    colector_1.agregar_bifurcacion(derivacion_T1)
-    colector_1.agregar_bifurcacion(colector_2)  # Sigue el flujo principal
+# Comprobación: pérdidas detalladas
+Kv_calc = Kv_valvula(theta_teorico)
+K_total = K_accesorios_fijos + Kv_calc
+dp_rama_final = perdida_tramo(
+    Q_rama,
+    D,
+    L_rama,
+    K_total,
+    rugosidad_abs,
+    rho_aire,
+    mu_aire,
+    es_hueco=True,
+    h_sum=sumergencia_h,
+)
+print(f"\n--- Verificación ---")
+print(f"Presión manométrica del soplador: {P_soplor_manometrica/1000:.2f} kPa")
+print(f"Pérdida en tubería principal: {dp_principal/1000:.2f} kPa")
+print(f"Presión disponible en la rama: {P_entrada_rama_man/1000:.2f} kPa")
+print(
+    f"Pérdida total en la rama (con válvula a {theta_teorico:.1f}°): {dp_rama_final/1000:.2f} kPa"
+)
+print(f"K_v de la válvula: {Kv_calc:.2f}")
 
-    derivacion_T2.agregar_bifurcacion(hueco_T2)
-    colector_2.agregar_bifurcacion(derivacion_T2)
-    colector_2.agregar_bifurcacion(colector_3)  # Sigue el flujo principal
+# ==================================================================
+# 4. COMPARACIÓN CON LA DEMANDA BIOLÓGICA (tanques que se pueden alimentar)
+# ==================================================================
+# Caudal de aire necesario por tanque (L/min) según OUR
+Q_necesario_Lpm = (OUR_objetivo * V_tanque) / (eficiencia_O2 * densidad_O2_molar) / 60.0
+N_max_biologico = int(Q_total_Lpm / Q_necesario_Lpm)
+print(f"\n--- Capacidad biológica ---")
+print(f"Caudal por tanque necesario: {Q_necesario_Lpm:.2f} L/min")
+print(f"Número máximo de tanques (solo biología): {N_max_biologico}")
 
-    derivacion_T3.agregar_bifurcacion(hueco_T3)
-    colector_3.agregar_bifurcacion(derivacion_T3)  # Fin de línea
-
-    # Simular
-    sim = SimuladorFlujo(colector_1, entorno)
-    sim.resolver_flujo_directo(
-        P_motor_manometrica=Presion_Motor_Gauge, Q_total_estimado=Caudal_Estimado
-    )
-
-    # Resultados
-    sim.reporte_energetico(P_motor_manometrica=Presion_Motor_Gauge)
-    sim.generar_graficas_por_tanque()
+# ==================================================================
+# 5. GRÁFICA DEL COEFICIENTE K_v EN FUNCIÓN DE θ
+# ==================================================================
+theta_vals = np.linspace(0, 90, 200)
+K_vals = [Kv_valvula(th) for th in theta_vals]
+plt.figure(figsize=(8, 5))
+plt.plot(theta_vals, K_vals, "b-", linewidth=2)
+plt.axvline(
+    theta_teorico, color="r", linestyle="--", label=f"θ teórico = {theta_teorico:.1f}°"
+)
+plt.yscale("log")
+plt.xlabel("Ángulo de la válvula (grados)")
+plt.ylabel("Coeficiente de pérdida K_v")
+plt.title("Curva característica de la válvula de mariposa")
+plt.grid(True, which="both", linestyle="--", alpha=0.6)
+plt.legend()
+plt.show()
